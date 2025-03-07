@@ -1,0 +1,22 @@
+---
+title: "ST494 Final Project"
+author: "Brandon Chan"
+date: "2025-03-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(e1071)
+library(MASS)
+```
+
+```{r}
+df <- read_csv("https://raw.githubusercontent.com/BrandonYChan/ST494/refs/heads/main/basketball_career_length.csv")
+df
+```
+
