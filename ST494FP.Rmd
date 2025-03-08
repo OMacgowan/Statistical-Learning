@@ -1,5 +1,5 @@
 ---
-title: "ST494 Final Project"
+title: "Predicting and Understanding NBA Career Length"
 author: "Brandon Chan"
 date: "2025-03-07"
 output: html_document
@@ -7,16 +7,86 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-```
-
-```{r}
 library(tidyverse)
 library(e1071)
 library(MASS)
+library(caret)
+select <- dplyr::select
 ```
 
+## Executive Summary and Contents
+
 ```{r}
-df <- read_csv("https://raw.githubusercontent.com/BrandonYChan/ST494/refs/heads/main/basketball_career_length.csv")
-df
+contents <- tribble(
+  ~Index, ~Category, ~Method,
+  1, "Introduction", "Written",
+  2, "Preprocessing", "Data Description and Encoding",
+  3, "Unsupervised Learning/Analysis", "PCA and Clustering",
+  4, "Preprocessing", "Variable Selection",
+  5, "Supervised Regression", "Linear and Non-Linear Regression",
+  6, "Supervised Classification", "LDA/QDA and Logistic Regression",
+  7, "Supervised Classification", "Tree-Based Methods",
+  8, "Supervised Classification", "Support Vector Machines",
+  9, "Deep Learning", "Neural Networks",
+  10, "Conclusion", "Written", 
+)
+contents
+
 ```
+
+
+# 1 Preprocessing
+
+```{r, echo=FALSE}
+# Load data from GitHub and preprocess 
+df <- read_csv("https://raw.githubusercontent.com/BrandonYChan/ST494/refs/heads/main/basketball_career_length.csv")
+df <- df %>% 
+  select(-c(sport)) %>% # The only sport is basketball so the variable is redundant
+  rename("retired"="status") %>% 
+  distinct()
+```
+
+
+```{r, echo=FALSE}
+# Extract Birth Year As a New Variable
+birth_vector <- as.vector(df["birth_date"])$birth_date 
+df$birth_year = as.integer(sapply(strsplit(birth_vector, ", "), `[`, 2))
+
+# One-hot Encode Categorical Variables
+encoded_vars <- as.data.frame(model.matrix(~ retired+positions+hall_of_fame-1, data = df))
+encoded_df <- cbind(df, encoded_vars) %>% 
+  select(-c(hall_of_fame, retired, positions, birth_date))
+
+# Handle Missing Values
+encoded_df[!complete.cases(encoded_df),] # For some reason the birth date of Bill Allen is unknown
+encoded_df <- encoded_df %>% filter(name!="Bill Allen")
+
+# Create Numeric Only Dataframe for Models
+numeric_df <- encoded_df %>% select(-c(name))
+
+```
+
+# 2 Data Exploration with Unsupervised Methods 
+
+## Principal Component Analysis
+
+```{r}
+pr <- prcomp(numeric_df, scale=TRUE)
+pr$rotation
+```
+
+
+```{r}
+biplot(pr, scale = 0)
+```
+
+
+
+
+
+
+
+
+
+
 
