@@ -37,7 +37,7 @@ contents
 
 # 1 Preprocessing
 
-```{r, echo=FALSE}
+```{r, include=FALSE}
 # Load data from GitHub and preprocess 
 df <- read_csv("https://raw.githubusercontent.com/BrandonYChan/ST494/refs/heads/main/basketball_career_length.csv")
 df <- df %>% 
@@ -71,13 +71,35 @@ numeric_df <- encoded_df %>% select(-c(name))
 ## Principal Component Analysis
 
 ```{r}
+
+# Find Principal Components
 pr <- prcomp(numeric_df, scale=TRUE)
-pr$rotation
+
+pc1 <- pr$rotation[,1]
+
+# Show Impact of Variables on the First Principle Component
+pc1_loading_df <- cbind(names(pc1), as_data_frame(pc1)) %>% # Join names and loadings to form columns in the dataframe
+  rename("names" = "names(pc1)", "pc1_loading" = "value") %>%  
+  arrange(desc(abs(pc1_loading)))
+
+pc1_loading_df
+```
+
+```{r}
+# Show Proportion of Variance Explained (PVE)
+pve <- pr$sdev^2 / sum(pr$sdev^2)   
+
+pve_df <- as_data_frame(cbind(1:length(pve), pve)) %>% # Show PVE for each number of principal components
+  mutate(cumulative_pve = cumsum(pve)) %>% # Cumulative PVE for each additional PC 
+  rename("num_principal_components" = "V1")
+  
+pve_df
 ```
 
 
 ```{r}
-biplot(pr, scale = 0)
+# Show directions of PCs from the plot of the first 2 principal components 
+biplot(pr, scale = 0, cex=0.4)
 ```
 
 
