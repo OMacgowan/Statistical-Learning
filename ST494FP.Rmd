@@ -47,7 +47,7 @@ df <- read_csv("https://raw.githubusercontent.com/BrandonYChan/Statistical-Learn
 
 ```
 
-#1.2 Mutate Dataframe For Analysis
+#1.2 Mutate Dataframe
 ```{r, echo=FALSE}
 
 format="%B %d, %Y"
@@ -70,17 +70,17 @@ df2 <- df |>
          hall_of_fame = as.integer(hall_of_fame)
        ) |>
   
-       #One Hot Encoding Categorical Variable (positions)
-       bind_cols(as.data.frame(model.matrix(~ positions - 1, data = df))) |>  
-  
        #Removing Redundant And Non Numeric
        select(-c(
                  name,   #Not Important To Model
                  sport,  #All Identical
                  end_year, #Redundant As Start,Duration Already Stored
-                 positions, #Expanded With One Hot
                  birth_date  #Redundant As Start,Age Already Stored
                  ))
+
+
+
+
 ```
 #1.3 Filter Data + Handle Missing
 ```{r}
@@ -99,6 +99,17 @@ if (any(is.na(df3))) {
 }
 ```
 
+#1.4
+```{r}
+df_reg <- df3 |> bind_cols(as.data.frame(model.matrix(~ positions - 1, data = df3))) |>
+               select(-c(positions))
+  
+  
+df_cls <- df3
+
+
+```
+
 #1.4 Display Final Format
 ```{r}
 df3[sample(nrow(df3), size = 10), ]
@@ -107,7 +118,7 @@ df3[sample(nrow(df3), size = 10), ]
 #1.5 Predictor Distribution:
 ```{r}
 
-data_long <- pivot_longer(df3, cols = everything())
+data_long <- pivot_longer(df3_reg, cols = everything())
 
 ggplot(data_long, aes(x = value, fill = name)) +
   geom_histogram(bins = 20, position = "identity") +
@@ -115,7 +126,13 @@ ggplot(data_long, aes(x = value, fill = name)) +
   labs(title = "Predictor Distributions", x = "Value", y = "Frequency")
 ```
 
+#1.6 Genereting Data For Regression + Classification
+```{r}
 
+#Generating One Hot Representation For Non Numeric
+
+
+```
 
 
 
@@ -183,6 +200,40 @@ nrow(test)
 
 
 
+
+
+# Tree
+```{r}
+library(tree)
+
+#Generate Trees of Various size
+
+#Display Error Rate At Given Sizes (Train, Test)
+
+general_model <- tree(position ~ ., data = train)
+
+general_predictions <- predict(general_model, test, type = "class")
+
+
+general_cv = cv.tree(general_model, FUN = prune.misclass)
+
+
+plot(general_cv$size, general_cv$dev, type = "b", 
+     xlab = " Size", 
+     ylab = "Misclassification",
+     main = " Error vs. Size")
+
+
+
+#Choose Best
+
+#Generate Best Tree
+
+#Comment On Accuracy
+
+
+
+```
 
 
 
