@@ -64,7 +64,7 @@ df2 <- df |>
          "has_prepared" = "test_preparation_course",
          "is_male" = "gender",
          "parent_education" = "parental_level_of_education",
-         "gpa" = "grade"
+         "gpa" = "total_score"
        ) |> 
        mutate(
          is_male = as.integer(if_else(is_male =="male",1,0)),
@@ -73,7 +73,8 @@ df2 <- df |>
        ) |>
        select(-c("roll_no",
                  "science_score",
-                 "writing_score"    #REMOVE FOR NOW!!!!!!!!!!!!!!!!!!!!!!!!!
+                 "writing_score",    #REMOVE FOR NOW!!!!!!!!!!!!!!!!!!!!!!!!!,
+                 "grade"
                  ))
 ```
 
