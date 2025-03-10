@@ -48,7 +48,7 @@ df <- df %>%
 
 
 ```{r, echo=FALSE}
-# Extract Birth Year As a New Variable
+# Extract Birth Year as a New Variable
 birth_vector <- as.vector(df["birth_date"])$birth_date 
 df$birth_year = as.integer(sapply(strsplit(birth_vector, ", "), `[`, 2))
 
@@ -85,6 +85,7 @@ pc1_loading_df <- cbind(names(pc1), as_data_frame(pc1)) %>% # Join names and loa
 pc1_loading_df
 ```
 
+
 ```{r}
 # Show Proportion of Variance Explained (PVE)
 pve <- pr$sdev^2 / sum(pr$sdev^2)   
@@ -98,8 +99,15 @@ pve_df
 
 
 ```{r}
-# Show directions of PCs from the plot of the first 2 principal components 
+# Show projections of data onto first 2 PCs
 biplot(pr, scale = 0, cex=0.4)
+```
+
+## K-Means Clustering on PC1 and PC2
+
+```{r}
+km <- kmeans(pr$x, 3, nstart=20)
+plot(pr$x, col = (km$cluster +1), pch=20, cex=2)
 ```
 
 
