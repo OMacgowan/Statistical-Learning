@@ -12,6 +12,7 @@ library(e1071)
 library(MASS)
 library(tidyverse)
 library(caret)
+library(leaps)
 select <- dplyr::select
 ```
 
@@ -164,6 +165,20 @@ km <- kmeans(pr$x, 3, nstart=20)
 plot(pr$x, col = (km$cluster +1), pch=20, cex=2)
 ```
 
+# Variable Selection 
+```{r}
+
+```
+
+## Train Test Split
+```{r}
+train_index = sample(seq_len(nrow(df3)), 0.8*nrow(df3))
+train <- df3[train_index,]
+test <- df3[-train_index,]
+
+nrow(train)
+nrow(test)
+```
 
 
 
