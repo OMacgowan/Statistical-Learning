@@ -1,6 +1,6 @@
 ---
 title: "Predicting and Understanding NBA Career Length"
-author: "Brandon Chan"
+author: "Brandon Chan + Lucas Duncan"
 date: "2025-03-07"
 output: html_document
 ---
@@ -10,6 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(e1071)
 library(MASS)
+library(tidyverse)
 library(caret)
 select <- dplyr::select
 ```
@@ -37,43 +38,96 @@ contents
 
 # 1 Preprocessing
 
+#1.1 Extract Data
 ```{r, include=FALSE}
 # Load data from GitHub and preprocess 
-df <- read_csv("https://raw.githubusercontent.com/BrandonYChan/ST494/refs/heads/main/basketball_career_length.csv")
-df <- df %>% 
-  select(-c(sport)) %>% # The only sport is basketball so the variable is redundant
-  rename("retired"="status") %>% 
-  distinct()
+df <- read_csv("https://raw.githubusercontent.com/BrandonYChan/Statistical-Learning/main/basketball_career_length.csv")
+
+
 ```
 
-
+#1.2 Mutate Dataframe For Analysis
 ```{r, echo=FALSE}
-# Extract Birth Year as a New Variable
-birth_vector <- as.vector(df["birth_date"])$birth_date 
-df$birth_year = as.integer(sapply(strsplit(birth_vector, ", "), `[`, 2))
 
-# One-hot Encode Categorical Variables
-encoded_vars <- as.data.frame(model.matrix(~ retired+positions+hall_of_fame-1, data = df))
-encoded_df <- cbind(df, encoded_vars) %>% 
-  select(-c(hall_of_fame, retired, positions, birth_date))
+format="%B %d, %Y"
 
-# Handle Missing Values
-encoded_df[!complete.cases(encoded_df),] # For some reason the birth date of Bill Allen is unknown
-encoded_df <- encoded_df %>% filter(name!="Bill Allen")
-
-# Create Numeric Only Dataframe for Models
-numeric_df <- encoded_df %>% select(-c(name))
-
+df2 <- df |>
+  
+       rename(
+         #Renaming Ambiguous Status Variable
+         "retired" = "status"     
+       ) |>
+       mutate(
+         #Convert BirthDate To Year
+         birth_date = as.Date(birth_date,format),  
+         
+         #Store Age At Start
+         age = start_year - year(birth_date),  
+         
+         #Convert Retired,HallOfFame To Integer
+         retired = as.integer(retired),                         
+         hall_of_fame = as.integer(hall_of_fame)
+       ) |>
+  
+       #One Hot Encoding Categorical Variable (positions)
+       bind_cols(as.data.frame(model.matrix(~ positions - 1, data = df))) |>  
+  
+       #Removing Redundant And Non Numeric
+       select(-c(
+                 name,   #Not Important To Model
+                 sport,  #All Identical
+                 end_year, #Redundant As Start,Duration Already Stored
+                 positions, #Expanded With One Hot
+                 birth_date  #Redundant As Start,Age Already Stored
+                 ))
 ```
+#1.3 Filter Data + Handle Missing
+```{r}
+#Remove Duplicate Rows
+df3 <- distinct(df2)
+
+#Replace Missing NUMERIC (Including Date) Values With ColMean
+if (any(is.na(df3))) {
+  df3[] <- lapply(df3, function(x) {
+    if (is.numeric(x)) {
+      replace(x, is.na(x), mean(x, na.rm = TRUE))
+    } else {
+      x
+    }
+  })
+}
+```
+
+#1.4 Display Final Format
+```{r}
+df3[sample(nrow(df3), size = 10), ]
+```
+
+#1.5 Predictor Distribution:
+```{r}
+
+data_long <- pivot_longer(df3, cols = everything())
+
+ggplot(data_long, aes(x = value, fill = name)) +
+  geom_histogram(bins = 20, position = "identity") +
+  facet_wrap(~ name, scales = "free") +
+  labs(title = "Predictor Distributions", x = "Value", y = "Frequency")
+```
+
+
+
+
+
 
 # 2 Data Exploration with Unsupervised Methods 
 
-## Principal Component Analysis
+
+##2.1 Principal Component Analysis
 
 ```{r}
 
 # Find Principal Components
-pr <- prcomp(numeric_df, scale=TRUE)
+pr <- prcomp(df3, scale=TRUE)
 
 pc1 <- pr$rotation[,1]
 
