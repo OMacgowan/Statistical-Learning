@@ -112,13 +112,13 @@ df_cls <- df3
 
 #1.4 Display Final Format
 ```{r}
-df3[sample(nrow(df3), size = 10), ]
+df_reg[sample(nrow(df_reg), size = 10), ]
 ```
 
 #1.5 Predictor Distribution:
 ```{r}
 
-data_long <- pivot_longer(df3_reg, cols = everything())
+data_long <- pivot_longer(df_reg, cols = everything())
 
 ggplot(data_long, aes(x = value, fill = name)) +
   geom_histogram(bins = 20, position = "identity") +

@@ -42,7 +42,7 @@ contents
 
 ### 2: Preprocessing
 
-#2.1 Extract Data
+## 2.1 Extract Data
 ```{r, warning=FALSE}
 
 location = "https://raw.githubusercontent.com/BrandonYChan/Statistical-Learning/main/Student_performance_10k.csv"
@@ -54,7 +54,7 @@ df <- read_csv(location, show_col_types = FALSE)
 df
 ```
 
-#2.2 Clean Data
+## 2.2 Clean Data
 ```{r}
 
 df2 <- df |>
@@ -79,7 +79,7 @@ df2 <- df |>
 ```
 
 
-#2.3 Interpolate NA values
+## 2.3 Interpolate NA values
 ```{r}
 
 #Remove Any Duplicates
@@ -100,7 +100,7 @@ if (any(is.na(df3))) {
 df3 <- df3[complete.cases(df3[c("race_ethnicity", "parent_education")]), ]
 ```
 
-#2.4 Format For Classification + Regression
+## 2.4 Format For Classification + Regression
 ```{r}
 
 #For Regression We Convert All Categories Into ONEHOT Notation
@@ -116,7 +116,7 @@ df_cls <- df3 |>
 ```
 
 
-#2.5 Display Variable Distributions
+## 2.5 Display Variable Distributions
 ```{r}
 
 df_numeric <- df_cls |>
@@ -139,7 +139,7 @@ facet_wrap(~ variable, scales = "free") +
 labs(title = "Factor Distributions", x = "Value", y = "Frequency")
 
 ```
-#2.6 Split Into Train + Test Sets
+## 2.6 Split Into Train + Test Sets
 ```{r}
 
 train_index <- which(runif(nrow(df2)) < 0.8)
@@ -161,7 +161,7 @@ test_cls <- df_cls[-train_index,]
 # 2 Data Exploration with Unsupervised Methods 
 
 
-##2.1 Principal Component Analysis
+## 2.1 Principal Component Analysis
 
 ```{r}
 
@@ -197,9 +197,44 @@ biplot(pr, scale = 0, cex=0.4)
 ## K-Means Clustering on PC1 and PC2
 
 ```{r}
-km <- kmeans(pr$x, 3, nstart=20)
+km <- kmeans(pr$x, 2, nstart=50)
 plot(pr$x, col = (km$cluster +1), pch=20, cex=2)
 ```
+
+# Variable Selection
+```{r}
+par(mfrow=c(1,3))
+
+# Best subset selection
+best_subset <- regsubsets(gpa~., df_reg, nvmax = ncol(df_reg))
+bs_summary <- summary(best_subset) 
+
+# BIC plot
+plot(seq_len(length(bs_summary$bic)), bs_summary$bic, type="b", xlab="Number of predictors", ylab="Score")
+points(which.min(bs_summary$bic), min(bs_summary$bic), col="red", cex=2, pch=20) 
+
+# cp plot
+plot(seq_len(length(bs_summary$cp)), bs_summary$cp, type="b", xlab="Number of predictors", ylab="Score")
+points(which.min(bs_summary$cp), min(bs_summary$cp), col="red", cex=2, pch=20) 
+
+# Adjusted R^2 plot
+plot(seq_len(length(bs_summary$adjr2)), bs_summary$adjr2, type="b", xlab="Number of predictors", ylab="Score")
+points(which.max(bs_summary$adjr2), max(bs_summary$adjr2), col="red", cex=2, pch=20)
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
 
 
 
