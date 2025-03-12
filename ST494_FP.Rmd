@@ -7,6 +7,8 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+
 library(tidyverse)
 library(e1071)
 library(MASS)
@@ -15,6 +17,7 @@ library(caret)
 library(leaps)
 library(tidyr)
 library(ggplot2)
+library(glmnet)
 
 select <- dplyr::select
 ```
@@ -64,17 +67,19 @@ df2 <- df |>
          "has_prepared" = "test_preparation_course",
          "is_male" = "gender",
          "parent_education" = "parental_level_of_education",
-         "gpa" = "total_score"
+         "gpa" = "total_score",
+         "gpa_letter" = "grade"
        ) |> 
        mutate(
          is_male = as.integer(if_else(is_male =="male",1,0)),
          race_ethnicity = str_sub(df$race_ethnicity, -1, -1),
-         gpa = gpa/4
+         gpa = gpa/4,
+         gpa_letter = if_else(gpa_letter == "Fail", "F", gpa_letter)
        ) |>
        select(-c("roll_no",
                  "science_score",
-                 "writing_score",    #REMOVE FOR NOW!!!!!!!!!!!!!!!!!!!!!!!!!,
-                 "grade"
+                 "writing_score"    #REMOVE FOR NOW(NOTE GPA is AV of all 4)!!!!!!!!!!!!!!!!!!!!!!!!!,
+              
                  ))
 ```
 
@@ -97,7 +102,20 @@ if (any(is.na(df3))) {
 }
 
 #Dropping Missing Factor Columns
-df3 <- df3[complete.cases(df3[c("race_ethnicity", "parent_education")]), ]
+df3 <- df3[complete.cases(df3[c("race_ethnicity", "parent_education", "gpa_letter")]), ]
+
+
+
+
+
+
+
+
+
+
+
+
+
 ```
 
 ## 2.4 Format For Classification + Regression
@@ -106,13 +124,17 @@ df3 <- df3[complete.cases(df3[c("race_ethnicity", "parent_education")]), ]
 #For Regression We Convert All Categories Into ONEHOT Notation
 df_reg <- df3 |> 
           bind_cols(as.data.frame(model.matrix(~ `race_ethnicity` + `parent_education` - 1, data = df3))) |>
-          select(-c("race_ethnicity","parent_education"))
+          select(-c("race_ethnicity","parent_education","gpa_letter"))
 
 df_cls <- df3 |> 
           mutate(
             race_ethnicity = as.factor(race_ethnicity),
-            parent_education = as.factor(parent_education)
+            parent_education = as.factor(parent_education),
+            gpa_letter = as.factor(gpa_letter)
           )
+
+df_reg
+df_cls
 ```
 
 
@@ -142,7 +164,12 @@ labs(title = "Factor Distributions", x = "Value", y = "Frequency")
 ## 2.6 Split Into Train + Test Sets
 ```{r}
 
-train_index <- which(runif(nrow(df2)) < 0.8)
+train_index <- sample(1:nrow(df_reg), nrow(df_reg)*0.8)
+
+print("NA IN DF_REG AND DF_CLS")
+sum(is.na(df_reg))
+sum(is.na(df_cls))
+
 
 train_reg <- df_reg[train_index,]
 test_reg <- df_reg[-train_index,]
@@ -150,6 +177,12 @@ test_reg <- df_reg[-train_index,]
 train_cls <- df_cls[train_index,]
 test_cls <- df_cls[-train_index,]
 
+
+print("NA IN SPLITS")
+sum(is.na(train_reg))
+sum(is.na(train_cls))
+sum(is.na(test_reg))
+sum(is.na(test_cls))
 
 ```
 
@@ -224,12 +257,153 @@ points(which.max(bs_summary$adjr2), max(bs_summary$adjr2), col="red", cex=2, pch
 
 
 ```
+#LINEAR REGRESSION
+
+```{r}
+
+train_x <- as.matrix(train_reg[, -c(6)])
+train_y <- as.matrix(train_reg$gpa)
+
+test_x <- as.matrix(test_reg[, -c(6)])
+test_y <- as.matrix(test_reg$gpa)
+
+
+#Linear Model
+linear_model <- lm(gpa ~ ., data=train_reg)
+preds <- predict(linear_model, test_reg)
+RMSE(test_y, preds)
+summary(linear_model)
+
+#LASSO:
+optimal_lambda <- cv.glmnet(train_x, train_y, alpha=1)$lambda.min
+lasso_model <- glmnet(train_x, train_y, alpha=1, lambda=optimal_lambda)
+lasso_predictions <- predict(lasso_model, newx=test_x, s=optimal_lambda)
+RMSE(test_y, lasso_predictions)
+coef(lasso_model)
+
+#Ridge
+optimal_lambda <- cv.glmnet(train_x, train_y, alpha=0)$lambda.min
+ridge_model <- glmnet(train_x, train_y, alpha=0, lambda=optimal_lambda)
+ridge_predictions <- predict(ridge_model, newx=test_x, s=optimal_lambda)
+RMSE(test_y, ridge_predictions)
+coef(ridge_model)
+
+```
+
+```{r}
 
 
 
 
 
 
+
+
+
+
+```
+
+
+
+#NON-LINEAR REGRESSION
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#LDA + QDA
+```{r}
+
+model <- lda(gpa_letter ~ ., data = train_cls)
+
+preds <- predict(model, newdata = test_cls)
+
+class <- preds$class
+
+table(class, test_cls$gpa_letter)
+
+
+accuracy <- mean(class == test_cls$gpa_letter)
+print(accuracy)
+summary(lda_model)
+
+#PERHAPS DISPLAY USING PC PLOT
+```
+
+
+```{r}
+#QDA:
+
+#READ:
+#some groups are too small size for QDA to work (its an actual error), so as a group we gotta decide how we want to handle that
+```
+
+
+```{r, include=FALSE}
+
+
+#LOGISTIC REGRESSION
+
+library(nnet)
+
+model <- multinom(gpa_letter ~ ., data = train_cls)
+
+predicted_probs <- predict(model, newdata = train_cls, type = "probs")
+predicted_class <- predict(model, newdata = test_cls, type = "class")
+
+
+accuracy <- mean(predicted_class == test_cls$gpa_letter)
+
+#MIGHT WANT TO OVERLAY OVER PC GRAPH
+
+```
+
+```{r}
+print(accuracy)
+summary(model)
+```
+
+
+
+```{r}
+#SVM
+library(e1071)
+
+
+try = seq(1, 10, by = 1)
+
+#ATTEMPTING TO DETERMINE THE RELATIONSHIP OF DATA (IE LINEAR,QUADRATIC,RADIAL)
+
+#from PC, we expect Linear Model To Work Well
+
+best <- tune(svm, gpa_letter ~ ., data = train_cls, ranges = list(cost = try),kernel="linear")$best.parameters$cost
+linear_model <- svm(gpa_letter ~ .,data=train_cls, cost=best, kernel="linear")
+mean(predict(linear_model, test_cls, type="class") != test_cls$gpa_letter)
+
+best <- tune(svm, gpa_letter ~ ., data = train_cls, ranges = list(cost = try), kernel="radial")$best.parameters$cost
+radial_model <- svm(gpa_letter ~ .,data=train_cls, cost=best, kernel="radial")
+mean(predict(radial_model, test_cls, type="class") != test_cls$gpa_letter)
+
+best <- tune(svm, gpa_letter ~ ., data = train_cls, ranges = list(cost = try), kernel="polynomial",degree=2)$best.parameters$cost
+quadratic_model <- svm(gpa_letter ~ .,data=train_cls, cost=best, kernel="polynomial",degree=2)
+mean(predict(quadratic_model, test_cls, type="class") != test_cls$gpa_letter)
+
+```
 
 
 
