@@ -104,18 +104,6 @@ if (any(is.na(df3))) {
 #Dropping Missing Factor Columns
 df3 <- df3[complete.cases(df3[c("race_ethnicity", "parent_education", "gpa_letter")]), ]
 
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 
 ## 2.4 Format For Classification + Regression
@@ -230,11 +218,12 @@ biplot(pr, scale = 0, cex=0.4)
 ## K-Means Clustering on PC1 and PC2
 
 ```{r}
-km <- kmeans(pr$x, 2, nstart=50)
+km <- kmeans(pr$x, 3, nstart=50)
 plot(pr$x, col = (km$cluster +1), pch=20, cex=2)
 ```
 
 # Variable Selection
+
 ```{r}
 par(mfrow=c(1,3))
 
@@ -257,6 +246,14 @@ points(which.max(bs_summary$adjr2), max(bs_summary$adjr2), col="red", cex=2, pch
 
 
 ```
+
+```{r}
+tibble(Best_BIC = which.min(bs_summary$bic), Cest_Cp = which.min(bs_summary$cp), Best_Adjusted_Rsq = which.max(bs_summary$adjr2))
+
+# What do we do with this they're all different
+```
+
+
 #LINEAR REGRESSION
 
 ```{r}
@@ -270,70 +267,51 @@ test_y <- as.matrix(test_reg$gpa)
 
 #Linear Model
 linear_model <- lm(gpa ~ ., data=train_reg)
-preds <- predict(linear_model, test_reg)
-RMSE(test_y, preds)
-summary(linear_model)
+linear_preds <- predict(linear_model, test_reg)
+RMSE_linear = RMSE(test_y, linear_preds)
+# summary(linear_model)
 
 #LASSO:
 optimal_lambda <- cv.glmnet(train_x, train_y, alpha=1)$lambda.min
 lasso_model <- glmnet(train_x, train_y, alpha=1, lambda=optimal_lambda)
 lasso_predictions <- predict(lasso_model, newx=test_x, s=optimal_lambda)
-RMSE(test_y, lasso_predictions)
-coef(lasso_model)
+RMSE_lasso =  RMSE(test_y, lasso_predictions)
+# coef(lasso_model)
 
 #Ridge
 optimal_lambda <- cv.glmnet(train_x, train_y, alpha=0)$lambda.min
 ridge_model <- glmnet(train_x, train_y, alpha=0, lambda=optimal_lambda)
 ridge_predictions <- predict(ridge_model, newx=test_x, s=optimal_lambda)
-RMSE(test_y, ridge_predictions)
-coef(ridge_model)
+RMSE_ridge = RMSE(test_y, ridge_predictions)
+# coef(ridge_model)
+
+tribble(~"Unregularised RMSE", ~"LASSO RMSE", ~"Ridge RMSE",
+        RMSE_linear, RMSE_lasso, RMSE_ridge)
+
+# LASSO regression performs the best of these
 
 ```
-
-```{r}
-
-
-
-
-
-
-
-
-
-
-```
-
-
 
 #NON-LINEAR REGRESSION
 
+```{r}
+# Polynomial Regression
 
+# Natural Splines
 
+# Generalized Additive Model (GAM)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+```
 
 
 #LDA + QDA
 ```{r}
 
-model <- lda(gpa_letter ~ ., data = train_cls)
+lda_model <- lda(gpa_letter ~ ., data = train_cls)
 
-preds <- predict(model, newdata = test_cls)
+lda_preds <- predict(model, newdata = test_cls)
 
-class <- preds$class
+lda_class <- preds$class
 
 table(class, test_cls$gpa_letter)
 
@@ -351,6 +329,8 @@ summary(lda_model)
 
 #READ:
 #some groups are too small size for QDA to work (its an actual error), so as a group we gotta decide how we want to handle that
+
+# I think we just get rid of it and group LDA with logistic regression under the same header 
 ```
 
 
@@ -359,23 +339,23 @@ summary(lda_model)
 
 #LOGISTIC REGRESSION
 
-library(nnet)
+# library(nnet)
 
-model <- multinom(gpa_letter ~ ., data = train_cls)
+log_reg_model <- glm(gpa_letter ~ ., data = train_cls, family="binomial") # This is the method taught in class 
 
-predicted_probs <- predict(model, newdata = train_cls, type = "probs")
-predicted_class <- predict(model, newdata = test_cls, type = "class")
+log_reg_pred_probs <- predict(model, newdata = train_cls, type = "probs")
+log_reg_pred_class <- predict(model, newdata = test_cls, type = "class")
 
 
-accuracy <- mean(predicted_class == test_cls$gpa_letter)
+log_reg_accuracy <- mean(predicted_class == test_cls$gpa_letter)
 
 #MIGHT WANT TO OVERLAY OVER PC GRAPH
 
 ```
 
 ```{r}
-print(accuracy)
-summary(model)
+print(log_reg_accuracy)
+# summary(log_reg_model)
 ```
 
 
@@ -385,23 +365,23 @@ summary(model)
 library(e1071)
 
 
-try = seq(1, 10, by = 1)
+try = seq(1, 10, by = 3)
 
 #ATTEMPTING TO DETERMINE THE RELATIONSHIP OF DATA (IE LINEAR,QUADRATIC,RADIAL)
 
 #from PC, we expect Linear Model To Work Well
 
 best <- tune(svm, gpa_letter ~ ., data = train_cls, ranges = list(cost = try),kernel="linear")$best.parameters$cost
-linear_model <- svm(gpa_letter ~ .,data=train_cls, cost=best, kernel="linear")
-mean(predict(linear_model, test_cls, type="class") != test_cls$gpa_letter)
+linear_kernel_svm <- svm(gpa_letter ~ .,data=train_cls, cost=best, kernel="linear")
+mean(predict(linear_kernel_svm, test_cls, type="class") != test_cls$gpa_letter)
 
 best <- tune(svm, gpa_letter ~ ., data = train_cls, ranges = list(cost = try), kernel="radial")$best.parameters$cost
-radial_model <- svm(gpa_letter ~ .,data=train_cls, cost=best, kernel="radial")
-mean(predict(radial_model, test_cls, type="class") != test_cls$gpa_letter)
+radial_kernel_svm <- svm(gpa_letter ~ .,data=train_cls, cost=best, kernel="radial")
+mean(predict(radial_kernel_svm, test_cls, type="class") != test_cls$gpa_letter)
 
 best <- tune(svm, gpa_letter ~ ., data = train_cls, ranges = list(cost = try), kernel="polynomial",degree=2)$best.parameters$cost
-quadratic_model <- svm(gpa_letter ~ .,data=train_cls, cost=best, kernel="polynomial",degree=2)
-mean(predict(quadratic_model, test_cls, type="class") != test_cls$gpa_letter)
+quadratic_kernel_svm <- svm(gpa_letter ~ .,data=train_cls, cost=best, kernel="polynomial",degree=2)
+mean(predict(quadratic_kernel_svm, test_cls, type="class") != test_cls$gpa_letter)
 
 ```
 
