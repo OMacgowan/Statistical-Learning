@@ -309,14 +309,14 @@ tribble(~"Unregularised RMSE", ~"LASSO RMSE", ~"Ridge RMSE",
 
 lda_model <- lda(gpa_letter ~ ., data = train_cls)
 
-lda_preds <- predict(model, newdata = test_cls)
+lda_preds <- predict(lda_model, newdata = test_cls)
 
-lda_class <- preds$class
+lda_class <- lda_preds$class
 
-table(class, test_cls$gpa_letter)
+table(lda_class, test_cls$gpa_letter)
 
 
-accuracy <- mean(class == test_cls$gpa_letter)
+accuracy <- mean(lda_class == test_cls$gpa_letter)
 print(accuracy)
 summary(lda_model)
 
@@ -339,17 +339,17 @@ summary(lda_model)
 
 #LOGISTIC REGRESSION
 
-# library(nnet)
-
-log_reg_model <- glm(gpa_letter ~ ., data = train_cls, family="binomial") # This is the method taught in class 
-
-log_reg_pred_probs <- predict(model, newdata = train_cls, type = "probs")
-log_reg_pred_class <- predict(model, newdata = test_cls, type = "class")
-
-
-log_reg_accuracy <- mean(predicted_class == test_cls$gpa_letter)
-
-#MIGHT WANT TO OVERLAY OVER PC GRAPH
+library(nnet)
+ 
+log_reg_model <- multinom(gpa_letter ~ ., data = train_cls)
+ 
+log_reg_pred_probs <- predict(log_reg_model, newdata = test_cls, type = "probs")
+log_reg_pred_class <- predict(log_reg_model, newdata = test_cls, type = "class")
+ 
+ 
+ log_reg_accuracy <- mean(log_reg_pred_class == test_cls$gpa_letter)
+ 
+ #MIGHT WANT TO OVERLAY OVER PC GRAPH
 
 ```
 
