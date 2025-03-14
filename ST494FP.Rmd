@@ -7,12 +7,33 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+if(! require("caret")){install.packages("caret")}
+if(! require("tidyverse")){install.packages("tidyverse")}
+if(! require("ISLR2")){install.packages("ISLR2")}
+if(! require("boot")){install.packages("boot")}
+if(! require("MASS") ){ install.packages("MASS") }
+if(! require("leaps") ){ install.packages("leaps") }
+if(! require("glmnet") ){ install.packages("glmnet") }
+if(! require("pls") ){ install.packages("pls") }
+if(! require("splines")) {install.packages("splines")}
+if(! require("e1071")){ install.packages("e1071")}
+if(! require("pROC")){ install.packages("pROC")}
+if(! require("class")){ install.packages("class")}
+if(! require("reshape2")){ install.packages("reshape2")}
+if(! require("DAAG")){ install.packages("DAAG")}
+if(! require("pROC")){ install.packages("pROC")}
+if(! require("ROCR")){ install.packages("ROCR")}
+
 library(tidyverse)
 library(e1071)
 library(MASS)
 library(tidyverse)
 library(caret)
 library(leaps)
+library(pROC)
+library(ROCR)
+
 select <- dplyr::select
 ```
 

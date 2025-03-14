@@ -9,15 +9,31 @@ output: html_document
 #NOTES TO SELF:::::::::
   
 #-GPA is sum of 4 Classes, So any model cant use all 4
-
-
-
-
 ```
 
 ## 2.0: Imports
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+if(! require("caret")){install.packages("caret")}
+if(! require("tidyverse")){install.packages("tidyverse")}
+if(! require("ISLR2")){install.packages("ISLR2")}
+if(! require("boot")){install.packages("boot")}
+if(! require("MASS") ){ install.packages("MASS") }
+if(! require("leaps") ){ install.packages("leaps") }
+if(! require("glmnet") ){ install.packages("glmnet") }
+if(! require("pls") ){ install.packages("pls") }
+if(! require("splines")) {install.packages("splines")}
+if(! require("e1071")){ install.packages("e1071")}
+if(! require("pROC")){ install.packages("pROC")}
+if(! require("class")){ install.packages("class")}
+if(! require("reshape2")){ install.packages("reshape2")}
+if(! require("DAAG")){ install.packages("DAAG")}
+if(! require("ROCR")){ install.packages("ROCR")}
+if(! require("tree")){ install.packages("tree")}
+if(! require("randomForest")){ install.packages("randomForest")}
+
+
 library(tidyverse)
 library(e1071)
 library(MASS)
@@ -27,6 +43,10 @@ library(leaps)
 library(tidyr)
 library(ggplot2)
 library(glmnet)
+library(ROCR)
+library(pROC)
+library(randomForest)
+library(tree)
 select <- dplyr::select
 ```
 
@@ -51,12 +71,6 @@ contents
 
 
 ### 2: Preprocessing
-
-
-
-
-
-
 
 ## 2.1 Extract Data
 ```{r, warning=FALSE}
@@ -127,6 +141,7 @@ df4 <- df3 |> bind_cols(as.data.frame(model.matrix(~ `race_ethnicity` + `parent_
 
 ## 2.6 Split Into Train + Test Sets
 ```{r}
+set.seed(10)
 #Splits Rows
 train_index <- sample(1:nrow(df4), nrow(df4)*0.8)
 
@@ -140,7 +155,6 @@ df_test <- df4[-train_index,]
 
 
 ## 3.1 Principal Component Analysis
-
 
 
 ## 3.1.1 Generate Principle Components Train + Test
@@ -158,12 +172,14 @@ legend("topright", legend = levels(gpa_colors),
        fill = 1:length(levels(gpa_colors)), 
        pch = 20, title = "GPA Letter")
 
+# Not supposed to look at the test set
+
 #Highlight Distribution of TEST GPA in PC
-gpa_colors <- as.factor(df_test$gpa_letter)
-plot(pc2$x, col = gpa_colors, pch=20, cex=2)
-legend("topright", legend = levels(gpa_colors), 
-       fill = 1:length(levels(gpa_colors)), 
-       pch = 20, title = "GPA Letter")
+# gpa_colors <- as.factor(df_test$gpa_letter)
+# plot(pc2$x, col = gpa_colors, pch=20, cex=2)
+# legend("topright", legend = levels(gpa_colors), 
+#        fill = 1:length(levels(gpa_colors)), 
+#        pch = 20, title = "GPA Letter")
 ```
 
 
@@ -193,7 +209,7 @@ biplot(pc, scale = 0, cex=0.4)
 
 #3.2 K-Means Clustering on PC1 and PC2
 ```{r}
-km <- kmeans(pc$x, 3, nstart=50)
+km <- kmeans(pc$x, 6, nstart=50)
 plot(pc$x, col = (km$cluster +1), pch=20, cex=2)
 ```
 
@@ -207,7 +223,7 @@ plot(pc$x, col = (km$cluster +1), pch=20, cex=2)
 par(mfrow=c(1,3))
 
 # Best subset selection
-best_subset <- regsubsets(gpa~., df_train |> select(-c("gpa_letter")), nvmax = ncol(df_reg))
+best_subset <- regsubsets(gpa~., df_train |> select(-c("gpa_letter")), nvmax = ncol(df_train))
 (bs_summary <- summary(best_subset))
 
 # BIC plot
@@ -217,7 +233,7 @@ points(which.min(bs_summary$bic), min(bs_summary$bic), col="red", cex=2, pch=20)
 # cp plot
 plot(seq_len(length(bs_summary$cp)), bs_summary$cp, type="b", xlab="Number of predictors", ylab="CP",ylim=c(0,20))
 points(which.min(bs_summary$cp), min(bs_summary$cp), col="red", cex=2, pch=20)
-lines(seq_along(bs_summary$cp), seq_along(bs_summary$cp)+1, col="gray", lty=2)
+# lines(seq_along(bs_summary$cp), seq_along(bs_summary$cp)+1, col="gray", lty=2)
 
 # Adjusted R^2 plot
 plot(seq_len(length(bs_summary$adjr2)), bs_summary$adjr2, type="b", xlab="Number of predictors", ylab="R^2",ylim=c(0.45,1))
@@ -225,13 +241,12 @@ points(which.max(bs_summary$adjr2), max(bs_summary$adjr2), col="red", cex=2, pch
 ```
 
 ```{r}
-tibble(Best_BIC = which.min(bs_summary$bic), Cest_Cp = which.min(bs_summary$cp), Best_Adjusted_Rsq = which.max(bs_summary$adjr2))
+tibble(Best_BIC = which.min(bs_summary$bic), Best_Cp = which.min(bs_summary$cp), Best_Adjusted_Rsq = which.max(bs_summary$adjr2))
 
-# What do we do with this they're all different
 
 #BIC HEAVILY PENALIZED COMPLEXITY, BUT ADRSQ, AND CP BOTH SEEM TO BE OKAY WITH HIGHER, AND THE FACT LOTS OF THESE ARE ONE HOT VARIABLES MAKES ME THINK SLIGHTLY MORE IS OKAY, MAYBE WE JUST CHOOISE SOMETHING RANDOM FOR NOW, USE IT TO MOVE ON, THEN COME BACK
 
-p = 8
+p = 6
 
 chosen_model <- bs_summary$which[p, ]
 chosen_predictors = gsub("`", "", names(chosen_model[chosen_model == TRUE]))
@@ -283,7 +298,7 @@ ridge_model <- glmnet(train_x, train_y, alpha=0, lambda=optimal_lambda)
 ridge_predictions <- predict(ridge_model, newx=test_x, s=optimal_lambda)
 RMSE_ridge = RMSE(test_y, ridge_predictions)
 
-tribble(~"Unregularised RMSE", ~"LASSO RMSE", ~"Ridge RMSE",
+tribble(~"Unregularised Linear RMSE", ~"LASSO RMSE", ~"Ridge RMSE",
         RMSE_linear, RMSE_lasso, RMSE_ridge)
 
 ```
@@ -322,29 +337,32 @@ legend("topright", legend = levels(error_colors),
 
 #LDA + QDA
 ```{r}
-
 lda_model <- lda(gpa_letter ~ ., data = df_train |> select(-c("gpa")))
 
 lda_preds <- predict(lda_model, newdata = df_test |> select(-c("gpa")))
 
 lda_class <- lda_preds$class
-
 table(lda_class, df_test$gpa_letter)
 
 
 accuracy <- mean(lda_class == df_test$gpa_letter)
 print(accuracy)
 summary(lda_model)
+```
 
 
+```{r}
 #LDA MODEL EVALUATION:
 error_colors <- as.factor(df_test$gpa_letter == lda_class)
 
 
 plot(pc2$x, col = error_colors, pch=20, cex=2)
-legend("topright", legend = levels(error_colors), 
-       fill = 1:length(levels(error_colors)), 
+legend("topright", legend = levels(error_colors),
+       fill = 1:length(levels(error_colors)),
        pch = 20, title = "Reasonable Prediction")
+
+predicted_probs <- lda_preds$posterior
+colnames(predicted_probs) <- levels(df_test$gpa_letter)
 ```
 
 
@@ -372,7 +390,7 @@ log_reg_model <- multinom(gpa_letter ~ ., data = df_train |> select(-c("gpa")))
 log_reg_pred_class <- predict(log_reg_model, newdata = df_test |> select(-c("gpa")), type = "class")
  
  
- log_reg_accuracy <- mean(log_reg_pred_class == df_test$gpa_letter)
+log_reg_accuracy <- mean(log_reg_pred_class == df_test$gpa_letter)
  
 ```
 
@@ -380,9 +398,13 @@ log_reg_pred_class <- predict(log_reg_model, newdata = df_test |> select(-c("gpa
  #LOGISTIC MODEL EVALUATION:
 error_colors <- as.factor(log_reg_pred_class == df_test$gpa_letter)
 plot(pc2$x, col = error_colors, pch=20, cex=2)
-legend("topright", legend = levels(error_colors), 
-       fill = 1:length(levels(error_colors)), 
+legend("topright", legend = levels(error_colors),
+       fill = 1:length(levels(error_colors)),
        pch = 20, title = "Reasonable Prediction")
+
+
+table(log_reg_pred_class, df_test$gpa_letter)
+
 
 ```
 
@@ -391,52 +413,78 @@ print(log_reg_accuracy)
 # summary(log_reg_model)
 ```
 
+## Tree Based Methods
 
+### Decision Tree
 
 ```{r}
-#SVM
-library(e1071)
+library(tree)
+train_input <- df_train %>% select(-c(gpa)) %>% rename(masters_degree="parent_educationmaster's degree") # This variable is messed up
+decision_tree <- tree(gpa_letter ~ ., train_input)
 
-#NOO IDEA THE BEST
-try = seq(1, 1, by = 3)
-
-#ATTEMPTING TO DETERMINE THE RELATIONSHIP OF DATA (IE LINEAR,QUADRATIC,RADIAL)
-
-#from PC, we expect Linear Model To Work Well
-
-
-train <- df_train |> select(-c("gpa"))
-test <- df_test |> select(-c("gpa"))
-
-best <- tune(svm, gpa_letter ~ ., data = train, ranges = list(cost = try),kernel="linear")$best.parameters$cost
-linear_kernel_svm <- svm(gpa_letter ~ .,data=train, cost=best, kernel="linear")
-lin_preds <- predict(linear_kernel_svm, test, type="class") != test$gpa_letter
-lin_mis <- mean(lin_preds)
-
-best <- tune(svm, gpa_letter ~ ., data = train, ranges = list(cost = try), kernel="radial")$best.parameters$cost
-radial_kernel_svm <- svm(gpa_letter ~ .,data=train, cost=best, kernel="radial")
-rad_mis <- mean(predict(radial_kernel_svm, test, type="class") != test$gpa_letter)
-
-best <- tune(svm, gpa_letter ~ ., data = train, ranges = list(cost = try), kernel="polynomial",degree=2)$best.parameters$cost
-quadratic_kernel_svm <- svm(gpa_letter ~ .,data=train, cost=best, kernel="polynomial",degree=2)
-quad_mis <- mean(predict(quadratic_kernel_svm, test, type="class") != test$gpa_letter)
-
-tribble(~"LINAER MIS", ~"RADIAL MIS", ~"QUAD MIS",
-        lin_mis, rad_mis, quad_mis)
-
+summary(decision_tree)
+plot(decision_tree)
+text(decision_tree)
 
 ```
 
+### Random Forest
+
 ```{r}
+random_forest_model <- randomForest(gpa_letter~., train_input, ntree=500, importance=TRUE)
+summary(random_forest_model)
+```
+
+
+```{r}
+random_forest_model$confusion
+importance(random_forest_model)
+varImpPlot(random_forest_model)
+```
 
 
 
+## Support Vector Machines
+```{r}
+# # This won't fully run on my laptop (been going 10 mins) so it won't knit
+# 
+# #SVM
+# library(e1071)
+# 
+# #NOO IDEA THE BEST
+# try = seq(1, 10, by = 3)
+# 
+# #ATTEMPTING TO DETERMINE THE RELATIONSHIP OF DATA (IE LINEAR,QUADRATIC,RADIAL)
+# 
+# #from PC, we expect Linear Model To Work Well
+# 
+# 
+# train <- df_train |> select(-c("gpa"))
+# test <- df_test |> select(-c("gpa"))
+# 
+# best <- tune(svm, gpa_letter ~ ., data = train, ranges = list(cost = try),kernel="linear")$best.parameters$cost
+# linear_kernel_svm <- svm(gpa_letter ~ .,data=train, cost=best, kernel="linear")
+# lin_preds <- predict(linear_kernel_svm, test, type="class") != test$gpa_letter
+# lin_mis <- mean(lin_preds)
+# 
+# best <- tune(svm, gpa_letter ~ ., data = train, ranges = list(cost = try), kernel="radial")$best.parameters$cost
+# radial_kernel_svm <- svm(gpa_letter ~ .,data=train, cost=best, kernel="radial")
+# rad_mis <- mean(predict(radial_kernel_svm, test, type="class") != test$gpa_letter)
+# 
+# best <- tune(svm, gpa_letter ~ ., data = train, ranges = list(cost = try), kernel="polynomial",degree=2)$best.parameters$cost
+# quadratic_kernel_svm <- svm(gpa_letter ~ .,data=train, cost=best, kernel="polynomial",degree=2)
+# quad_mis <- mean(predict(quadratic_kernel_svm, test, type="class") != test$gpa_letter)
+# 
+# tribble(~"LINEAR MIS", ~"RADIAL MIS", ~"QUAD MIS",
+#         lin_mis, rad_mis, quad_mis)
+```
 
-error_colors <- as.factor(!lin_preds)
-plot(pc2$x, col = error_colors, pch=20, cex=2)
-legend("topright", legend = levels(error_colors), 
-       fill = 1:length(levels(error_colors)), 
-       pch = 20, title = "Reasonable Prediction")
+```{r}
+# error_colors <- as.factor(!lin_preds)
+# plot(pc2$x, col = error_colors, pch=20, cex=2)
+# legend("topright", legend = levels(error_colors), 
+#        fill = 1:length(levels(error_colors)), 
+#        pch = 20, title = "Reasonable Prediction")
 ```
 
 
