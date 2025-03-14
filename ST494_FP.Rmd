@@ -5,25 +5,17 @@ date: "2025-03-07"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r}
+#NOTES TO SELF:::::::::
+  
+#-GPA is sum of 4 Classes, So any model cant use all 4
 
 
-library(tidyverse)
-library(e1071)
-library(MASS)
-library(tidyverse)
-library(caret)
-library(leaps)
-library(tidyr)
-library(ggplot2)
-library(glmnet)
 
-select <- dplyr::select
+
 ```
 
 ## Executive Summary and Contents
-
 ```{r}
 contents <- tribble(
   ~Index, ~Category, ~Method,
@@ -39,29 +31,40 @@ contents <- tribble(
   10, "Conclusion", "Written", 
 )
 contents
-
 ```
 
 
 ### 2: Preprocessing
 
+
+
+
+## 2.0: Imports
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(e1071)
+library(MASS)
+library(tidyverse)
+library(caret)
+library(leaps)
+library(tidyr)
+library(ggplot2)
+library(glmnet)
+select <- dplyr::select
+```
+
+
 ## 2.1 Extract Data
 ```{r, warning=FALSE}
-
 location = "https://raw.githubusercontent.com/BrandonYChan/Statistical-Learning/main/Student_performance_10k.csv"
 
-df <- read_csv(location, show_col_types = FALSE) 
-
-#NOTE: GPA IS AVERAGE OF 4 courses, FOR MODEL THUS CANT USE ALL 4 AT ONCE
-
-df
+(df <- read_csv(location, show_col_types = FALSE))
 ```
 
 ## 2.2 Clean Data
 ```{r}
-
 df2 <- df |>
-  
        rename(
          "has_subsidized_lunch" = "lunch",
          "has_prepared" = "test_preparation_course",
@@ -76,21 +79,15 @@ df2 <- df |>
          gpa = gpa/4,
          gpa_letter = if_else(gpa_letter == "Fail", "F", gpa_letter)
        ) |>
-       select(-c("roll_no",
-                 "science_score",
-                 "writing_score"    #REMOVE FOR NOW(NOTE GPA is AV of all 4)!!!!!!!!!!!!!!!!!!!!!!!!!,
-              
-                 ))
+       select(-c("roll_no","science_score","writing_score"))
 ```
-
 
 ## 2.3 Interpolate NA values
 ```{r}
-
 #Remove Any Duplicates
 df3 <- distinct(df2)
 
-#Replace Missing NUMERIC (Including Date) Values With ColMean
+#Replace Missing NUMERIC Values With Column Mean
 if (any(is.na(df3))) {
   df3[] <- lapply(df3, function(x) {
     if (is.numeric(x)) {
@@ -103,89 +100,54 @@ if (any(is.na(df3))) {
 
 #Dropping Missing Factor Columns
 df3 <- df3[complete.cases(df3[c("race_ethnicity", "parent_education", "gpa_letter")]), ]
-
 ```
 
 ## 2.4 Format For Classification + Regression
 ```{r}
+#REGRESSION: PREDICT GPA (0-100)
+# Convert Categories Into ONEHOT Notation
+df_reg <- df3 |> bind_cols(as.data.frame(model.matrix(~ `race_ethnicity` + `parent_education` - 1, data = df3))) |>
+                 select(-c("race_ethnicity","parent_education","gpa_letter"))
 
-#For Regression We Convert All Categories Into ONEHOT Notation
-df_reg <- df3 |> 
-          bind_cols(as.data.frame(model.matrix(~ `race_ethnicity` + `parent_education` - 1, data = df3))) |>
-          select(-c("race_ethnicity","parent_education","gpa_letter"))
-
-df_cls <- df3 |> 
-          mutate(
-            race_ethnicity = as.factor(race_ethnicity),
-            parent_education = as.factor(parent_education),
-            gpa_letter = as.factor(gpa_letter)
-          )
-
-df_reg
-df_cls
+#CLASSIFICATION: PREDICT GPA_LETTER (A-F)
+df_cls <- df3 |> mutate(race_ethnicity = as.factor(race_ethnicity),
+                        parent_education = as.factor(parent_education),
+                        gpa_letter = as.factor(gpa_letter)) |>
+                 select(-c("gpa"))
 ```
 
 
 ## 2.5 Display Variable Distributions
 ```{r}
+#Display Numeric
+df_numeric <- df_cls |> select(where(is.numeric)) |> pivot_longer(cols = everything(), names_to = "variable", values_to = "value")
+ggplot(df_numeric, aes(x = value)) + geom_histogram(bins = 30) +  facet_wrap(~ variable, scales = "free")  
 
-df_numeric <- df_cls |>
-              select(where(is.numeric)) |>
-              pivot_longer(cols = everything(), names_to = "variable", values_to = "value")
-
-ggplot(df_numeric, aes(x = value)) +
-geom_histogram(bins = 30) +  
-facet_wrap(~ variable, scales = "free") +
-labs(title = "Numeric Distributions", x = "Value", y = "Frequency") 
-
-
-df_factor <- df_cls |>
-             select(where(is.factor)) |>
-             pivot_longer(cols = everything(), names_to = "variable", values_to = "value") 
-
-ggplot(df_factor, aes(x = value)) +
-geom_bar() +  
-facet_wrap(~ variable, scales = "free") +  
-labs(title = "Factor Distributions", x = "Value", y = "Frequency")
-
+#Display Factor
+df_factor <- df_cls |> select(where(is.factor)) |> pivot_longer(cols = everything(), names_to = "variable", values_to = "value") 
+ggplot(df_factor, aes(x = value)) + geom_bar() + facet_wrap(~ variable, scales = "free") 
 ```
 ## 2.6 Split Into Train + Test Sets
 ```{r}
 
+#Splits Rows
 train_index <- sample(1:nrow(df_reg), nrow(df_reg)*0.8)
 
-print("NA IN DF_REG AND DF_CLS")
-sum(is.na(df_reg))
-sum(is.na(df_cls))
-
-
+#Generates Training + Test Set For Classification + Regression Techniques
 train_reg <- df_reg[train_index,]
 test_reg <- df_reg[-train_index,]
 
 train_cls <- df_cls[train_index,]
 test_cls <- df_cls[-train_index,]
-
-
-print("NA IN SPLITS")
-sum(is.na(train_reg))
-sum(is.na(train_cls))
-sum(is.na(test_reg))
-sum(is.na(test_cls))
-
 ```
 
 
 
-
-
-
-# 2 Data Exploration with Unsupervised Methods 
+# 3 Data Exploration with Unsupervised Methods 
 
 
 ## 2.1 Principal Component Analysis
-
 ```{r}
-
 # Find Principal Components
 pr <- prcomp(df_reg, scale=TRUE)
 
@@ -194,7 +156,6 @@ pc1 <- pr$rotation[,1]
 (pc1_loading_df <- cbind(names(pc1), as_data_frame(pc1)) |>
                   rename("names" = "names(pc1)", "pc1_loading" = "value") |> 
                   arrange(desc(abs(pc1_loading))))
-
 ```
 
 
@@ -208,7 +169,6 @@ pve_df <- as_data_frame(cbind(1:length(pve), pve)) %>% # Show PVE for each numbe
   
 pve_df
 ```
-
 
 ```{r}
 # Show projections of data onto first 2 PCs
@@ -229,28 +189,30 @@ par(mfrow=c(1,3))
 
 # Best subset selection
 best_subset <- regsubsets(gpa~., df_reg, nvmax = ncol(df_reg))
-bs_summary <- summary(best_subset) 
+(bs_summary <- summary(best_subset))
 
 # BIC plot
-plot(seq_len(length(bs_summary$bic)), bs_summary$bic, type="b", xlab="Number of predictors", ylab="Score")
+plot(seq_len(length(bs_summary$bic)), bs_summary$bic, type="b", xlab="Number of predictors", ylab="BIC",ylim=c(-9500,-8000))
 points(which.min(bs_summary$bic), min(bs_summary$bic), col="red", cex=2, pch=20) 
 
 # cp plot
-plot(seq_len(length(bs_summary$cp)), bs_summary$cp, type="b", xlab="Number of predictors", ylab="Score")
-points(which.min(bs_summary$cp), min(bs_summary$cp), col="red", cex=2, pch=20) 
+plot(seq_len(length(bs_summary$cp)), bs_summary$cp, type="b", xlab="Number of predictors", ylab="CP",ylim=c(0,20))
+points(which.min(bs_summary$cp), min(bs_summary$cp), col="red", cex=2, pch=20)
+lines(seq_along(bs_summary$cp), seq_along(bs_summary$cp)+1, col="gray", lty=2)
 
 # Adjusted R^2 plot
-plot(seq_len(length(bs_summary$adjr2)), bs_summary$adjr2, type="b", xlab="Number of predictors", ylab="Score")
+plot(seq_len(length(bs_summary$adjr2)), bs_summary$adjr2, type="b", xlab="Number of predictors", ylab="R^2",ylim=c(0.45,1))
 points(which.max(bs_summary$adjr2), max(bs_summary$adjr2), col="red", cex=2, pch=20)
-
-
-
 ```
 
 ```{r}
 tibble(Best_BIC = which.min(bs_summary$bic), Cest_Cp = which.min(bs_summary$cp), Best_Adjusted_Rsq = which.max(bs_summary$adjr2))
 
 # What do we do with this they're all different
+
+#BIC HEAVILY PENALIZED COMPLEXITY, BUT ADRSQ, AND CP BOTH SEEM TO BE OKAY WITH HIGHER, AND THE FACT LOTS OF THESE ARE ONE HOT VARIABLES MAKES ME THINK SLIGHTLY MORE IS OKAY, MAYBE WE JUST CHOOISE SOMETHING RANDOM FOR NOW, USE IT TO MOVE ON, THEN COME BACK
+
+p = 8
 ```
 
 
