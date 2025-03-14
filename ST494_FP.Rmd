@@ -404,18 +404,22 @@ try = seq(1, 1, by = 3)
 
 #from PC, we expect Linear Model To Work Well
 
-best <- tune(svm, gpa_letter ~ ., data = train_cls, ranges = list(cost = try),kernel="linear")$best.parameters$cost
-linear_kernel_svm <- svm(gpa_letter ~ .,data=train_cls, cost=best, kernel="linear")
-lin_preds <- predict(linear_kernel_svm, test_cls, type="class") != test_cls$gpa_letter
+
+train <- df_train |> select(-c("gpa"))
+test <- df_test |> select(-c("gpa"))
+
+best <- tune(svm, gpa_letter ~ ., data = train, ranges = list(cost = try),kernel="linear")$best.parameters$cost
+linear_kernel_svm <- svm(gpa_letter ~ .,data=train, cost=best, kernel="linear")
+lin_preds <- predict(linear_kernel_svm, test, type="class") != test$gpa_letter
 lin_mis <- mean(lin_preds)
 
-best <- tune(svm, gpa_letter ~ ., data = train_cls, ranges = list(cost = try), kernel="radial")$best.parameters$cost
-radial_kernel_svm <- svm(gpa_letter ~ .,data=train_cls, cost=best, kernel="radial")
-rad_mis <- mean(predict(radial_kernel_svm, test_cls, type="class") != test_cls$gpa_letter)
+best <- tune(svm, gpa_letter ~ ., data = train, ranges = list(cost = try), kernel="radial")$best.parameters$cost
+radial_kernel_svm <- svm(gpa_letter ~ .,data=train, cost=best, kernel="radial")
+rad_mis <- mean(predict(radial_kernel_svm, test, type="class") != test$gpa_letter)
 
-best <- tune(svm, gpa_letter ~ ., data = train_cls, ranges = list(cost = try), kernel="polynomial",degree=2)$best.parameters$cost
-quadratic_kernel_svm <- svm(gpa_letter ~ .,data=train_cls, cost=best, kernel="polynomial",degree=2)
-quad_mis <- mean(predict(quadratic_kernel_svm, test_cls, type="class") != test_cls$gpa_letter)
+best <- tune(svm, gpa_letter ~ ., data = train, ranges = list(cost = try), kernel="polynomial",degree=2)$best.parameters$cost
+quadratic_kernel_svm <- svm(gpa_letter ~ .,data=train, cost=best, kernel="polynomial",degree=2)
+quad_mis <- mean(predict(quadratic_kernel_svm, test, type="class") != test$gpa_letter)
 
 tribble(~"LINAER MIS", ~"RADIAL MIS", ~"QUAD MIS",
         lin_mis, rad_mis, quad_mis)
@@ -424,6 +428,9 @@ tribble(~"LINAER MIS", ~"RADIAL MIS", ~"QUAD MIS",
 ```
 
 ```{r}
+
+
+
 
 error_colors <- as.factor(!lin_preds)
 plot(pc2$x, col = error_colors, pch=20, cex=2)
