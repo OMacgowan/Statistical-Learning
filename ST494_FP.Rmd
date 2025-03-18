@@ -93,17 +93,11 @@ df2 <- df |>
          "has_prepared" = "test_preparation_course",
          "is_male" = "gender",
          "parent_education" = "parental_level_of_education",
-         "gpa" = "total_score",
-         "gpa_letter" = "grade",
-         "recent_math_mark" = "math_score",
-         "recent_writing_mark" = "writing_score",
-         "recent_science_mark" = "science_score"
        ) |> 
        mutate(
          is_male = as.integer(if_else(is_male =="male",1,0)),
          race_ethnicity = as.factor(str_sub(df$race_ethnicity, -1, -1)),
          parent_education = as.factor(parent_education),
-         gpa = gpa/4,
          
          gpa_letter = as.factor(if_else(gpa_letter == "Fail", "F", gpa_letter)),    #CLS-FIX
          
@@ -111,13 +105,48 @@ df2 <- df |>
          
          
        ) |>
-       select(-c("roll_no", "reading_score"))   #CLS-FIX
+       select(-c("roll_no"))   #CLS-FIX
 ```
 
 ## 2.3 Interpolate NA values
 ```{r}
 #Remove Any Duplicates
 df3 <- distinct(df2)
+
+
+sum(is.na(df3))
+
+
+#Sometimes GPA_Letter is missing --> Fill Using GPA
+df3 <- df3 |>
+        mutate(
+          gpa_letter = case_when(
+          !is.na(gpa_letter) ~ gpa_letter,
+          gpa >= 80 ~ "A",
+          gpa >= 62.5 ~ "B",
+          gpa >= 50 ~ "C",
+          gpa >= 37.5 ~ "D",
+          gpa < 37.5 ~ "F",
+          TRUE ~ sample(c("A","B","C","D","F"),1)
+        ))
+
+
+#Sometimes GPA is missing --> Estimate Using Letter
+df3 <- df3 |>
+        mutate(
+          gpa = case_when(
+          !is.na(gpa) ~ gpa,
+          gpa_letter == "A" ~ sample(80:100,1),
+          gpa_letter == "B" ~ sample(63:79, 1),
+          gpa_letter == "C" ~ sample(50:62,1),
+          gpa_letter == "D" ~ sample(38:49,1),
+          gpa_letter == "F" ~ sample(0:37,1),
+          TRUE ~ sample(0:100,1)
+        ))
+
+sum(is.na(df3))
+
+
 
 #Replace Missing NUMERIC Values With Column Mean
 if (any(is.na(df3))) {
@@ -150,14 +179,25 @@ ggplot(df_factor, aes(x = value)) + geom_bar() + facet_wrap(~ variable, scales =
 
 df4 <- df3 |> bind_cols(as.data.frame(model.matrix(~ `race_ethnicity` + `parent_education` - 1, data = df3))) |>
                  select(-c("race_ethnicity","parent_education"))
+
+df4
 ```
 
 
 ## 2.6 Class Balancing
 ```{r}
 
+table(df4$gpa_desirable)
+
+min_class_size <- min(table(df4$gpa_desirable))
 
 
+#df4 <- df4 |>
+#  group_by(gpa_desirable) |>
+#  sample_n(min_class_size) %>%
+#  ungroup()
+
+# Check the new class distribution
 
 ```
 
@@ -248,7 +288,7 @@ points(which.min(bs_summary$bic), min(bs_summary$bic), col="red", cex=2, pch=20)
 # cp plot
 plot(seq_len(length(bs_summary$cp)), bs_summary$cp, type="b", xlab="Number of predictors", ylab="CP",ylim=c(0,20))
 points(which.min(bs_summary$cp), min(bs_summary$cp), col="red", cex=2, pch=20)
-# lines(seq_along(bs_summary$cp), seq_along(bs_summary$cp)+1, col="gray", lty=2)
+lines(seq_along(bs_summary$cp), seq_along(bs_summary$cp)+1, col="gray", lty=2)
 
 # Adjusted R^2 plot
 plot(seq_len(length(bs_summary$adjr2)), bs_summary$adjr2, type="b", xlab="Number of predictors", ylab="R^2",ylim=c(0.45,1))
@@ -519,7 +559,7 @@ best <- tune(svm, gpa_desirable ~ ., data = train, ranges = list(cost = try),ker
  rad_mis <- mean(predict(radial_kernel_svm, test, type="class") != test$gpa_desirable)
   
  
-  best <- tune(svm, gpa_desiable ~ ., data = train, ranges = list(cost = try), kernel="polynomial",degree=2)$best.parameters$cost
+  best <- tune(svm, gpa_desirable ~ ., data = train, ranges = list(cost = try), kernel="polynomial",degree=2)$best.parameters$cost
  quadratic_kernel_svm <- svm(gpa_desirable ~ .,data=train, cost=best, kernel="polynomial",degree=2)
  quad_mis <- mean(predict(quadratic_kernel_svm, test, type="class") != test$gpa_desirable)
 # 
