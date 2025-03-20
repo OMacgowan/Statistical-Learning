@@ -356,15 +356,10 @@ colnames(selected_train)
 ```
 
 
-### 5: Supervised Regression - Linear + Non Linear
-
-
-
+# 5: Supervised Regression - Linear + Non Linear
 
 ## 5.1 Choosing Most Effective Linear Method
 ```{r}
-
-
 train_x <- as.matrix(selected_train[, !colnames(selected_train) %in% c("gpa", "gpa_letter", "gpa_desirable")])  #FIX-CLS
 train_y <- as.matrix(selected_train$gpa)
 
@@ -447,7 +442,6 @@ lda_preds <- predict(lda_model, newdata = selected_test |> select(-c("gpa", "gpa
 lda_class <- lda_preds$class
 table(lda_class, selected_test$gpa_desirable)
 
-
 accuracy <- mean(lda_class == selected_test$gpa_desirable)
 print(accuracy)
 summary(lda_model)
@@ -518,12 +512,9 @@ print(log_reg_accuracy)
 ```{r}
 library(tree)
 
-
-
 selected_train
 train_input <- selected_train |> select(-gpa, -gpa_letter) 
 decision_tree <- tree(gpa_desirable ~ ., train_input)
-
 
 summary(decision_tree)
 plot(decision_tree)
@@ -613,17 +604,43 @@ best <- tune(svm, gpa_desirable ~ ., data = train, ranges = list(cost = try),ker
 # install_keras(method = "virtualenv")
 
 library(keras)
+```
 
 
+```{r}
 dim(selected_train)
 
-# nn <- keras_model_sequential() %>% 
-#   layer_dense(units=50, activation="relu", input_shape=dim(selected_train)) %>% 
-#   layer_dropout(rate=0.1) %>% 
-#   layer_dense(units=25, activation="relu", input_shape=c(50)) %>% 
-#   layer_dense(units=unique(selected_train$gpa), activation="softmax")
+X_nn_train <- as.matrix(selected_train %>% select(-c("gpa_letter", gpa_desirable, gpa)))
+Y_nn_train <- as.matrix(model.matrix(~gpa_letter -1, data=selected_train))
 
+nn_keras <- keras_model_sequential() %>%
+  layer_dense(units=50, activation="relu", input_shape=6) %>%
+  layer_dropout(rate=0.1) %>%
+  layer_dense(units=25, activation="relu") %>%
+  layer_dense(units=length(unique(selected_train$gpa_letter)), activation="softmax")
 
+nn_keras %>% 
+  compile(
+    loss="categorical_crossentropy",
+    optimizer=optimizer_adam(),
+    metrics=c("accuracy")
+  )
+
+gpa_letter_encoded <- 
+
+nn_keras %>% 
+  fit(
+    X_nn_train, Y_nn_train,
+    epochs=10,
+    batch_size=10
+  )
+```
+
+```{r}
+X_nn_test <- as.matrix(selected_test %>% select(-c("gpa_letter", gpa_desirable, gpa)))
+Y_nn_test <- as.matrix(model.matrix(~gpa_letter -1, data=selected_test))
+summary(nn_keras)
+pred_nn_keras <- predict(nn_keras, X_nn_test, type="class")
 ```
 
 
