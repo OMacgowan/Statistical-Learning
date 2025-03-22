@@ -35,7 +35,10 @@ if(! require("reshape2")){ install.packages("reshape2")}
 if(! require("DAAG")){ install.packages("DAAG")}
 if(! require("ROCR")){ install.packages("ROCR")}
 if(! require("tree")){ install.packages("tree")}
+if(! require("rpart")){ install.packages("rpart")}
+if(! require("rpart.plot")){ install.packages("rpart.plot")}
 if(! require("randomForest")){ install.packages("randomForest")}
+if(! require("gam")){ install.packages("gam")}
 
 library(tidyverse)
 library(e1071)
@@ -51,6 +54,7 @@ library(ROCR)
 library(pROC)
 library(randomForest)
 library(tree)
+library(gam)
 select <- dplyr::select
 ```
 
@@ -98,7 +102,7 @@ df2 <- df |>
          is_male = as.integer(if_else(is_male =="male",1,0)),
          race_ethnicity = as.factor(str_sub(df$race_ethnicity, -1, -1)),
          parent_education = as.factor(parent_education),
-         
+         has_prepared = as.integer(has_prepared),
          gpa_letter = as.factor(if_else(gpa_letter == "Fail", "F", gpa_letter)),    #CLS-FIX
          
          gpa_desirable = as.factor(if_else(gpa_letter %in% c("Fail","D","C"), "UnDesirable", "Desirable"))
@@ -177,8 +181,10 @@ ggplot(df_factor, aes(x = value)) + geom_bar() + facet_wrap(~ variable, scales =
 ## 2.5 Format For Classification + Regression
 ```{r}
 
-df4 <- df3 |> bind_cols(as.data.frame(model.matrix(~ `race_ethnicity` + `parent_education` - 1, data = df3))) |>
-                 select(-c("race_ethnicity","parent_education"))
+df4 <- df3 |> 
+  bind_cols(as.data.frame(model.matrix(~ `race_ethnicity` + `parent_education` - 1, data = df3))) |>
+  select(-c("race_ethnicity","parent_education")) %>% 
+  transform(has_subsidized_lunch = as.integer(has_subsidized_lunch), has_prepared=as.integer(has_subsidized_lunch), is_male=as.integer(is_male))
 
 df4
 ```
@@ -279,13 +285,14 @@ for(k in 2:10){
 }
 
 # Choose where there is a peak on the graph 
-plot(x=2:10, y=avg_scores, type="b", xlab="k", ylab="Silhouette Score", main="Suggests 3 Clusters")
-points(x=3, y=avg_scores[2], col="red", cex=2, pch=20) # Peak at k=3
+plot(x=2:10, y=avg_scores, type="b", xlab="k", ylab="Silhouette Score", main="Suggests 4 Clusters")
+points(x=4, y=avg_scores[3], col="red", cex=2, pch=20) # Peak at k=3
 
+ideal_clusters <- 4
 ```
 ## 3.7 K-Means Clustering on PC1 and PC2
 ```{r} 
-km <- kmeans(pc$x[,1:2], 3, nstart=90) 
+km <- kmeans(pc$x[,1:2], centers=ideal_clusters, nstart=90) 
 plot(pc$x, col = (km$cluster +1), pch=20, cex=2)
 ```
 
@@ -414,15 +421,49 @@ legend("topright", legend = levels(error_colors),
 ```
 
 
-## 5.3 Non-linear Regression
+## 5.3 Non-linear Regression: GAM
 
 ```{r}
-# Polynomial Regression
-
-# Natural Splines
-
 # Generalized Additive Model (GAM)
 
+chosen_preds_tidy <- preds_formula <- gsub(" ", "_", chosen_predictors[-c(1)])
+preds_formula <- paste(chosen_preds_tidy, collapse=" + ")
+
+gam_obj <- gam(as.formula(paste("gpa~", preds_formula)), data=selected_train)
+
+
+scope_list <- list()
+
+for(i in seq_along(chosen_preds_tidy)){
+  predictor_name <- chosen_preds_tidy[i]
+  
+  length_unique <- nrow(distinct(selected_train[chosen_preds_tidy[i]]))
+  
+  if(length_unique > 2){
+    formula_curr <- as.formula(paste("~1 +", predictor_name, "+", "s(",predictor_name, ", 2)", "+ s(", predictor_name, ", 3)"))
+  }
+  else{
+    formula_curr <- as.formula(paste("~1 +", predictor_name))
+  }
+  scope_list[[predictor_name]] <- formula_curr
+}
+
+scope_list
+
+step.Gam(gam_obj, scope=scope_list)
+
+# summary(gam_obj)
+```
+
+```{r}
+best_gam <- gam(formula = gpa ~ is_male + s(recent_math_score, 3) + recent_writing_score + 
+    recent_science_score + parent_educationsome_high_school, 
+    data = selected_train, trace = FALSE)
+
+preds_best_gam <- best_gam %>% 
+  predict(selected_test)
+
+data.frame(RMSE = RMSE(preds_best_gam, selected_test$gpa), R2 = caret::R2(preds_best_gam, selected_test$gpa))
 ```
 
 
@@ -431,7 +472,7 @@ legend("topright", legend = levels(error_colors),
 
 
 
-### 6: Supervised Classification - LDA + Logistic Regression
+# 6: Supervised Classification - LDA + Logistic Regression
 
 ## 6.1 LDA Model Creation
 ```{r}
@@ -511,14 +552,14 @@ print(log_reg_accuracy)
 ## 7.1 Decision Tree
 ```{r}
 library(tree)
-
+library(rpart)
 selected_train
 train_input <- selected_train |> select(-gpa, -gpa_letter) 
-decision_tree <- tree(gpa_desirable ~ ., train_input)
+decision_tree <- rpart(gpa_desirable ~ ., train_input)
 
 summary(decision_tree)
-plot(decision_tree)
-text(decision_tree)
+rpart.plot(decision_tree)
+# text(decision_tree)
 
 ```
 
@@ -626,8 +667,6 @@ nn_keras %>%
     metrics=c("accuracy")
   )
 
-gpa_letter_encoded <- 
-
 nn_keras %>% 
   fit(
     X_nn_train, Y_nn_train,
@@ -641,27 +680,27 @@ X_nn_test <- as.matrix(selected_test %>% select(-c("gpa_letter", gpa_desirable, 
 Y_nn_test <- as.matrix(model.matrix(~gpa_letter -1, data=selected_test))
 summary(nn_keras)
 pred_nn_keras <- predict(nn_keras, X_nn_test, type="class")
+acc_nn_keras <- sum(pred_nn_keras == Y_nn_test)
 ```
 
 
 
 
 
-### 10 - Conclusions
+# 10 - Conclusions
+
+RANDOM IDEAS (FEEL FREE TO IMPLEMENT OR DELETE)
+
+Summarize Findings From Methods (IE compare RMSE error, or classification error): in a dataframe??
+
+Also (MAYBE) those shitty pc plots i made could be used to show how misclassification is distibuted between methods, although no pressure, 
 
 
-#RANDOM IDEAS (FEEL FREE TO IMPLEMENT OR DELETE)
-
-#Summarize Findings From Methods (IE compare RMSE error, or classification error): in a dataframe??
-
-# Also (MAYBE) those shitty pc plots i made could be used to show how misclassification is distibuted between methods, although no pressure, 
-
-
-#(IDEAS FOR) General Conclusion Topics/Talking Points:
-# - most influential (recent grades from individual classes)
-# - following (home factors: IE discounted lunch ~ less weight, parent eduction ~ wealth???, attitudes toward education??)
-# - preparation as a indicator of success?
-# - ethnicity (we dont know which are which, so idk how we can talk about it, but perhaps maybe say something along that lines of, certain ethnicitys have been finanically disadvantaged in past, and maybe higher likelihood of immigration/instability, or maybe school language isnt first language??, idk.
+(IDEAS FOR) General Conclusion Topics/Talking Points:
+ - most influential (recent grades from individual classes)
+ - following (home factors: IE discounted lunch ~ less weight, parent eduction ~ wealth???, attitudes toward education??)
+ - preparation as a indicator of success?
+ - ethnicity (we dont know which are which, so idk how we can talk about it, but perhaps maybe say something along that lines of, certain ethnicitys have been finanically disadvantaged in past, and maybe higher likelihood of immigration/instability, or maybe school language isnt first language??, idk.
 
 
 
