@@ -1,5 +1,5 @@
 ---
-title: "Predicting and Understanding NBA Career Length"
+title: "Predicting GPA and Interpreting Results"
 author: "Brandon Chan + Lucas Duncan"
 date: "2025-03-07"
 output: html_document
@@ -15,21 +15,12 @@ output: html_document
 
 # What is the desirable conclusion?
 
+# How we can predict GPA, factors that impact it, what we recommend for students to raise their GPA, institutions to evaluate GPA, and systematic issues. 
+
 ```
 
-### 1: Introduction
-
-
-
-### 2: Preprocessing
-
-
-
-
-
-## 2.0: Imports
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE)
 
 if(! require("caret")){install.packages("caret")}
 if(! require("tidyverse")){install.packages("tidyverse")}
@@ -71,7 +62,7 @@ select <- dplyr::select
 ```
 
 
-## Executive Summary and Contents
+# Executive Summary and Contents
 ```{r}
 contents <- tribble(
   ~Index, ~Category, ~Method,
@@ -89,15 +80,16 @@ contents <- tribble(
 contents
 ```
 
-## 2.1 Extract Data
-```{r, warning=FALSE}
+```{r, warning=FALSE, include=FALSE}
+# 2.1 Extract Data
 location = "https://raw.githubusercontent.com/BrandonYChan/Statistical-Learning/main/Student_performance_10k.csv"
 
 (df <- read_csv(location, show_col_types = FALSE, n_max=10000))
 ```
 
-## 2.2 Clean Data
-```{r}
+```{r, include=FALSE}
+# 2.2 Clean Data
+
 df2 <- df |>
        rename(
          "has_subsidized_lunch" = "lunch",
@@ -119,8 +111,12 @@ df2 <- df |>
        select(-c("roll_no"))   #CLS-FIX
 ```
 
-## 2.3 Interpolate NA values
+
+## The Student Performance Dataset
+
 ```{r}
+# 2.3 Interpolate NA values
+
 #Remove Any Duplicates
 df3 <- distinct(df2)
 
@@ -172,10 +168,15 @@ if (any(is.na(df3))) {
 
 #Dropping Missing Factor Values
 df3 <- df3[complete.cases(df3[c("race_ethnicity", "parent_education", "gpa_desirable", "gpa_letter")]), ]   ###CLS-FIX
+
+head(df3, 2)
 ```
 
-## 2.4 Display Variable Distributions
+## Variable Distributions
+
 ```{r}
+## 2.4 Display Variable Distributions
+
 #Display Numeric
 df_numeric <- df3 |> select(where(is.numeric)) |> pivot_longer(cols = everything(), names_to = "variable", values_to = "value")
 ggplot(df_numeric, aes(x = value)) + geom_histogram(bins = 30) +  facet_wrap(~ variable, scales = "free")  
@@ -185,20 +186,21 @@ df_factor <- df3 |> select(where(is.factor)) |> pivot_longer(cols = everything()
 ggplot(df_factor, aes(x = value)) + geom_bar() + facet_wrap(~ variable, scales = "free") 
 ```
 
-## 2.5 Format For Classification + Regression
+## Encoded Data Frame
+
 ```{r}
+# 2.5 Format For Classification + Regression
 
 df4 <- df3 |> 
   bind_cols(as.data.frame(model.matrix(~ `race_ethnicity` + `parent_education` - 1, data = df3))) |>
   select(-c("race_ethnicity","parent_education")) %>% 
   transform(has_subsidized_lunch = as.integer(has_subsidized_lunch), has_prepared=as.integer(has_subsidized_lunch), is_male=as.integer(is_male))
 
-df4
+head(df4, 2)
 ```
 
-
-## 2.6 Class Balancing
-```{r}
+```{r, include=FALSE}
+# 2.6 Class Balancing
 
 #OPTIONAL??
 
@@ -218,10 +220,9 @@ table(df4$gpa_desirable)
 
 ```
 
+```{r, include=FALSE}
+# 2.7 Split Into Train + Test Sets
 
-
-### 2.7 Split Into Train + Test Sets
-```{r}
 set.seed(10)
 #Splits Rows
 train_index <- sample(1:nrow(df4), nrow(df4)*0.8)
@@ -234,6 +235,8 @@ df_test <- df4[-train_index,]
 
 ## 3.1 PCA: Generate Principle Components Train + Test
 ```{r}
+
+# 3.1 PCA: Generate Principle Components Train + Test
 
 # Find Principal Components 
 pc <- prcomp(df_train |> select(-c("gpa_desirable","gpa_letter")), scale=TRUE)   #CLS-FIX
@@ -250,6 +253,9 @@ legend("topright", legend = levels(gpa_colors),
 
 ## 3.2 Impact of Variables on the First Principle Component
 ```{r}
+
+# 3.2 Impact of Variables on the First Principle Component
+
 pc1 <- pc$rotation[,1]
 (pc1_loading_df <- cbind(names(pc1), as_data_frame(pc1)) |>
                   rename("names" = "names(pc1)", "pc1_loading" = "value") |> 
@@ -257,7 +263,10 @@ pc1 <- pc$rotation[,1]
 ```
 
 ## 3.3 Proportion of Variance Explained (PVE)
+
 ```{r}
+# 3.3 Proportion of Variance Explained (PVE)
+
 pve <- pc$sdev^2 / sum(pc$sdev^2)   
 
 (pve_df <- as_data_frame(cbind(1:length(pve), pve)) %>% # Show PVE for each number of principal components
@@ -266,11 +275,18 @@ pve <- pc$sdev^2 / sum(pc$sdev^2)
 ```
 
 ## 3.4 Projecting Data Onto the First 2 Principal Components
+
 ```{r}
+# 3.4 Projecting Data Onto the First 2 Principal Components
+
 biplot(pc, scale = 0, cex=0.4)
 ```
+
 ## 3.6 Ideal Number of Clusters
-```{r}
+
+```{r, warning=FALSE}
+# 3.6 Ideal Number of Clusters
+
 # within_cluster_sum_squares <- c()
 # 
 # # Calculate wcss for each number of clusters
@@ -302,19 +318,22 @@ points(x=4, y=avg_scores[3], col="red", cex=2, pch=20) # Peak at k=3
 ideal_clusters <- 4
 ```
 ## 3.7 K-Means Clustering on PC1 and PC2
+
 ```{r} 
+# 3.7 K-Means Clustering on PC1 and PC2
+
 km <- kmeans(pc$x[,1:2], centers=ideal_clusters, nstart=90) 
 plot(pc$x, col = (km$cluster +1), pch=20, cex=2)
 ```
 
-
-
-
-
 # 4: Variable Selection
 
-## 4.1 Comparing Metrics
-```{r}
+## Evaluating Criterion for Best Subset Selection
+
+```{r, warning=FALSE, message=FALSE}
+
+# 4.1 Comparing Metrics
+
 par(mfrow=c(1,3))
 
 # Note: djusted plots to start from 3 predictors; looks cleaner 
@@ -340,11 +359,17 @@ plot(3:n_preds_uncorr, bs_summary$adjr2[3:n_preds_uncorr], type="b", xlab="Numbe
 points(which.max(bs_summary$adjr2), max(bs_summary$adjr2), col="red", cex=2, pch=20)
 ```
 
-## 4.2 Extracting Key Variables
+## Ideal Number of Variables for Each Criterion
+
 ```{r}
+# 4.2 Extracting Key Variables
+
 tibble(Best_BIC = which.min(bs_summary$bic), Best_Cp = which.min(bs_summary$cp), Best_Adjusted_Rsq = which.max(bs_summary$adjr2))
+```
 
+## Names of Ideal Predictors 
 
+```{r}
 #BIC HEAVILY PENALIZED COMPLEXITY, BUT ADRSQ, AND CP BOTH SEEM TO BE OKAY WITH HIGHER, AND THE FACT LOTS OF THESE ARE ONE HOT VARIABLES MAKES ME THINK SLIGHTLY MORE IS OKAY, MAYBE WE JUST CHOOISE SOMETHING RANDOM FOR NOW, USE IT TO MOVE ON, THEN COME BACK
 
 p = 6
@@ -352,11 +377,11 @@ p = 6
 chosen_model <- bs_summary$which[p, ]
 chosen_predictors = gsub("`", "", names(chosen_model[chosen_model == TRUE]))
 chosen_predictors
-
+# We should make this output cleaner in the final edit 
 ```
 
-## 4.3 Filtering Data Columns
-```{r}
+```{r, include=FALSE}
+# 4.3 Filtering Data Columns
 
 #UPDATING TRAIN + TEST TO ONLY INCLUDE IMPORTANT VARIABLES
 selected_train <- df_train[, c("gpa","gpa_letter", "gpa_desirable", chosen_predictors[2:length(chosen_predictors)])]
@@ -377,6 +402,7 @@ colnames(selected_train)
 # 5: Supervised Regression - Linear + Non Linear
 
 ## 5.1 Choosing Most Effective Linear Method
+
 ```{r}
 train_x <- as.matrix(selected_train[, !colnames(selected_train) %in% c("gpa", "gpa_letter", "gpa_desirable")])  #FIX-CLS
 train_y <- as.matrix(selected_train$gpa)
@@ -413,16 +439,25 @@ tribble(~"Loss Type", ~"Unregularised Linear", ~"LASSO", ~"Ridge",
 
 
 ## 5.2 Extracting Insight And Evaluating Chosen Linear Method
+
+### Predictor Coefficients
+
 ```{r}
 # LASSO regression performs the best of these????????????//
 
 #THEREFORE OUR BEST MODEL (AND INSIGHT FROM COEFFICIENTS COMES FROM LASSO)
 coef(lasso_model)
+```
 
+### Accuracy Within 10% 
+
+```{r}
 accuracy_within_10 <- mean(abs(selected_test$gpa -lasso_predictions) < 10)
 accuracy_within_10
+```
 
 
+```{r}
 #LASSO MODEL EVALUATION:
 error_colors <- as.factor(abs(selected_test$gpa - lasso_predictions) < 10)
 plot(pc2$x, col = error_colors, pch=20, cex=2)
@@ -434,8 +469,8 @@ legend("topright", legend = levels(error_colors),
 
 ## 5.3 Non-linear Regression: GAM
 
-```{r}
-# Generalized Additive Model (GAM)
+```{r, include=FALSE}
+# Cross Validation to Choose the Best One
 
 chosen_preds_tidy <- preds_formula <- gsub(" ", "_", chosen_predictors[-c(1)])
 preds_formula <- paste(chosen_preds_tidy, collapse=" + ")
@@ -486,7 +521,10 @@ data.frame(RMSE = RMSE(preds_best_gam, selected_test$gpa), R2 = caret::R2(preds_
 # 6: Supervised Classification - LDA + Logistic Regression
 
 ## 6.1 LDA Model Creation
-```{r}
+
+```{r, include=FALSE}
+# 6.1 LDA Model Creation
+
 lda_model <- lda(gpa_desirable ~ ., data = selected_train |> select(-c("gpa", "gpa_letter")))
 
 lda_preds <- predict(lda_model, newdata = selected_test |> select(-c("gpa", "gpa_letter")))
@@ -494,9 +532,15 @@ lda_preds <- predict(lda_model, newdata = selected_test |> select(-c("gpa", "gpa
 lda_class <- lda_preds$class
 table(lda_class, selected_test$gpa_desirable)
 
+summary(lda_model)
+```
+
+### LDA Accuracy
+
+```{r}
 accuracy <- mean(lda_class == selected_test$gpa_desirable)
 print(accuracy)
-summary(lda_model)
+
 
 #FIND DISCRIMINANT SCORE???
 
@@ -504,7 +548,10 @@ summary(lda_model)
 ```
 
 ## 6.2 LDA Model Evaluation
+
 ```{r}
+# 6.2 LDA Model Evaluation
+
 #LDA MODEL EVALUATION:
 error_colors <- as.factor(selected_test$gpa_desirable == lda_class)
 
@@ -523,7 +570,7 @@ colnames(predicted_probs) <- levels(selected_test$gpa_desirable)
 ## 6.3 Logistic Model Creation
 
 ```{r, include=FALSE}
-
+# 6.3 Logistic Model Creation
 
 #LOGISTIC REGRESSION
 
@@ -541,50 +588,84 @@ log_reg_accuracy <- mean(log_reg_pred_class == selected_test$gpa_desirable)
 ```
 
 ## 6.4 Logistic Model Evaluation
+
+### Plotting Logistic Regression Model Evaluation
+
 ```{r}
+# 6.4 Logistic Model Evaluation
+
  #LOGISTIC MODEL EVALUATION:
 error_colors <- as.factor(log_reg_pred_class == selected_test$gpa_desirable)
 plot(pc2$x, col = error_colors, pch=20, cex=2)
 legend("topright", legend = levels(error_colors),
        fill = 1:length(levels(error_colors)),
        pch = 20, title = "Reasonable Prediction")
+```
 
+### Logistic Regression Confusion Matrix
+
+```{r}
 table(log_reg_pred_class, selected_test$gpa_desirable)
+```
 
+### Logistic Regression Metrics 
+
+```{r}
 print(log_reg_accuracy)
 ```
 
 
 
 
-### 7: Supervised Classification - Tree-Based Methods
+# 7: Supervised Classification - Tree-Based Methods
 
 
 ## 7.1 Decision Tree
-```{r}
-library(tree)
+
+```{r, include=FALSE}
+# 7.1 Decision Tree
+
 library(rpart)
-selected_train
 train_input <- selected_train |> select(-gpa, -gpa_letter) 
 decision_tree <- rpart(gpa_desirable ~ ., train_input)
 
 summary(decision_tree)
-rpart.plot(decision_tree)
-# text(decision_tree)
+```
 
+### Decision Tree Plot
+
+```{r}
+rpart.plot(decision_tree)
 ```
 
 ## 7.2 Random Forest Creation
 
-```{r}
+```{r, include=FALSE}
+# 7.2 Random Forest Creation
+
 random_forest_model <- randomForest(gpa_desirable~., train_input, ntree=500, importance=TRUE)
 summary(random_forest_model)
 ```
 
 ## 7.3 Random Forest Evaluation
+
+### Confusion Matrix
+
 ```{r}
+# 7.3 Random Forest Evaluation
+
 random_forest_model$confusion
+```
+
+### Variable Importance
+
+```{r}
 importance(random_forest_model)
+```
+
+### Variable Importance Plot
+
+```{r}
 varImpPlot(random_forest_model)
 ```
 
@@ -594,7 +675,10 @@ varImpPlot(random_forest_model)
 
 
 ## 8.1 Comparing SVM Models
-```{r}
+
+```{r, include=FALSE}
+# 8.1 Comparing SVM Models
+
 # # This won't fully run on my laptop (been going 10 mins) so it won't knit
 # 
 
@@ -632,13 +716,20 @@ best <- tune(svm, gpa_desirable ~ ., data = train, ranges = list(cost = try),ker
   best <- tune(svm, gpa_desirable ~ ., data = train, ranges = list(cost = try), kernel="polynomial",degree=2)$best.parameters$cost
  quadratic_kernel_svm <- svm(gpa_desirable ~ .,data=train, cost=best, kernel="polynomial",degree=2)
  quad_mis <- mean(predict(quadratic_kernel_svm, test, type="class") != test$gpa_desirable)
-# 
- tribble(~"LINEAR MIS", ~"RADIAL MIS", ~"QUAD MIS",
+#
+```
+
+
+```{r}
+tribble(~"LINEAR MIS", ~"RADIAL MIS", ~"QUAD MIS",
          lin_mis, rad_mis, quad_mis)
 ```
 
 ## 8.2 Display
+
 ```{r}
+# 8.2 Display
+
  error_colors <- as.factor(!lin_preds)
  plot(pc2$x, col = error_colors, pch=20, cex=2)
  legend("topright", legend = levels(error_colors), 
@@ -648,7 +739,10 @@ best <- tune(svm, gpa_desirable ~ ., data = train, ranges = list(cost = try),ker
 
 
 # 9 - Deep Learning
-```{r}
+
+```{r, include=FALSE}
+# 9.1 Loading Keras into the Workspace
+
 # Moved installations + imports here because they take a while 
 
 # if(!require("keras")) {install.packages("keras")}
@@ -659,8 +753,10 @@ library(keras)
 ```
 
 
-```{r}
-dim(selected_train)
+```{r, include=FALSE}
+# 9.2 Creating the Network
+
+# dim(selected_train)
 
 X_nn_train <- as.matrix(selected_train %>% select(-c("gpa_letter", gpa_desirable, gpa)))
 Y_nn_train <- as.matrix(model.matrix(~gpa_letter -1, data=selected_train))
@@ -681,17 +777,27 @@ nn_keras %>%
 nn_keras %>% 
   fit(
     X_nn_train, Y_nn_train,
-    epochs=10,
+    epochs=25,
     batch_size=10
   )
 ```
 
+### Evaluating the Neural Network
+
 ```{r}
+# 9.3 Evaluating the Network
+
 X_nn_test <- as.matrix(selected_test %>% select(-c("gpa_letter", gpa_desirable, gpa)))
 Y_nn_test <- as.matrix(model.matrix(~gpa_letter -1, data=selected_test))
-summary(nn_keras)
-pred_nn_keras <- predict(nn_keras, X_nn_test, type="class")
-acc_nn_keras <- sum(pred_nn_keras == Y_nn_test)
+# summary(nn_keras)
+pred_nn_keras_prob <- predict(nn_keras, X_nn_test, type="class")
+colnames(pred_nn_keras_prob) <- c("gpa_letterA", "gpa_letterB", "gpa_letterC", "gpa_letterD", "gpa_letterF")
+pred_nn_keras <- colnames(pred_nn_keras_prob)[apply(pred_nn_keras_prob, 1, which.max)]
+Y_nn_test_label <- colnames(Y_nn_test)[apply(Y_nn_test, 1, which.max)]
+
+acc_nn_keras <- mean(pred_nn_keras == Y_nn_test_label)
+#
+data.frame(Accuracy=acc_nn_keras)
 ```
 
 
