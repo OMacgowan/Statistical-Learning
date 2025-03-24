@@ -13,7 +13,19 @@ output: html_document
 # Additionally we could make the classification stuff boolean (desirable or not)
 #   SEARCH FOR "CLS-FIX"
 
+# What is the desirable conclusion?
+
 ```
+
+### 1: Introduction
+
+
+
+### 2: Preprocessing
+
+
+
+
 
 ## 2.0: Imports
 ```{r setup, include=FALSE}
@@ -76,11 +88,6 @@ contents <- tribble(
 )
 contents
 ```
-### 1: Introduction
-
-
-
-### 2: Preprocessing
 
 ## 2.1 Extract Data
 ```{r, warning=FALSE}
@@ -193,15 +200,19 @@ df4
 ## 2.6 Class Balancing
 ```{r}
 
-table(df4$gpa_desirable)
+#OPTIONAL??
 
-min_class_size <- min(table(df4$gpa_desirable))
+#table(df4$gpa_desirable)
+
+#min_class_size <- min(table(df4$gpa_desirable))
 
 
 #df4 <- df4 |>
 #  group_by(gpa_desirable) |>
-#  sample_n(min_class_size) %>%
-#  ungroup()
+#  sample_n(min_class_size) |>
+ # ungroup()
+
+table(df4$gpa_desirable)
 
 # Check the new class distribution
 
