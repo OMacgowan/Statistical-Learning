@@ -2,7 +2,10 @@
 title: "Predicting GPA and Interpreting Results"
 author: "Brandon Chan + Lucas Duncan"
 date: "2025-03-07"
-output: html_document
+output: 
+  html_document: 
+    df_print: kable 
+  pdf_document: default
 ---
 
 ```{r}
@@ -21,6 +24,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(tibble.print_min = 4, tibble.print_max = 10) 
 
 if(! require("caret")){install.packages("caret")}
 if(! require("tidyverse")){install.packages("tidyverse")}
@@ -58,11 +62,14 @@ library(pROC)
 library(randomForest)
 library(tree)
 library(gam)
+library(pander)
+library(knitr)
+
 select <- dplyr::select
 ```
 
+# Executive Summary and Contents 
 
-# Executive Summary and Contents
 ```{r}
 contents <- tribble(
   ~Index, ~Category, ~Method,
@@ -71,20 +78,23 @@ contents <- tribble(
   3, "Unsupervised Learning/Analysis", "PCA and Clustering",
   4, "Preprocessing", "Variable Selection",
   5, "Supervised Regression", "Linear and Non-Linear Regression",
-  6, "Supervised Classification", "LDA and Logistic Regression",
-  7, "Supervised Classification", "Tree-Based Methods",
-  8, "Supervised Classification", "Support Vector Machines",
-  9, "Deep Learning", "Neural Networks",
-  10, "Conclusion", "Written", 
-)
+  6, "Supervised Linear Classification", "LDA and Logistic Regression",
+  7, "Supervised Non-Linear Classification", "Tree-Based Methods, Support Vector Machines",
+  8, "Deep Learning", "Neural Networks",
+  9, "Conclusion", "Written", 
+) 
 contents
 ```
+
+# Introduction
+
+By analyzing different factors that contribute to student performance, we aim to provide insight into how institutions can improve educational and environmental factors that foster student success. This is an issue that we can relate to directly. As students ourselves, we understand that success in academics is influenced by several factors that include preparation and abililty, but go beyond to include factors outside of school.  
 
 ```{r, warning=FALSE, include=FALSE}
 # 2.1 Extract Data
 location = "https://raw.githubusercontent.com/BrandonYChan/Statistical-Learning/main/Student_performance_10k.csv"
 
-(df <- read_csv(location, show_col_types = FALSE, n_max=10000))
+df <- read_csv(location, show_col_types = FALSE, n_max=10000)
 ```
 
 ```{r, include=FALSE}
@@ -111,7 +121,6 @@ df2 <- df |>
        select(-c("roll_no"))   #CLS-FIX
 ```
 
-
 ## The Student Performance Dataset
 
 ```{r}
@@ -121,7 +130,7 @@ df2 <- df |>
 df3 <- distinct(df2)
 
 
-sum(is.na(df3))
+# sum(is.na(df3))
 
 
 #Sometimes GPA_Letter is missing --> Fill Using GPA
@@ -151,7 +160,7 @@ df3 <- df3 |>
           TRUE ~ sample(0:100,1)
         ))
 
-sum(is.na(df3))
+# sum(is.na(df3))
 
 
 
