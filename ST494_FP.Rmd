@@ -13,11 +13,6 @@ output:
   
 #-GPA is sum of 4 Classes, So any model cant use all 4
 
-# Additionally we could make the classification stuff boolean (desirable or not)
-#   SEARCH FOR "CLS-FIX"
-
-# What is the desirable conclusion?
-
 # How we can predict GPA, factors that impact it, what we recommend for students to raise their GPA, institutions to evaluate GPA, and systematic issues. 
 
 ```
@@ -77,6 +72,9 @@ library(e1071)
 library(keras)
 
 select <- dplyr::select
+
+
+set.seed(10)
 ```
 
 # Executive Summary and Contents 
@@ -99,13 +97,13 @@ contents
 
 # Introduction
 
-By analyzing different factors that contribute to student performance, we aim to provide insight into how institutions can improve educational and environmental factors that foster student success. This is an issue that we can relate to directly. As students ourselves, we understand that success in academics is influenced by several factors that include preparation and abililty, but go beyond to include factors outside of school.  
+By analyzing different factors that contribute to student performance, we aim to provide insight into how institutions can improve educational and environmental factors that foster student success. This is an issue that we can relate to directly. As students ourselves, we understand that success in academics is influenced by several factors that include preparation and ability, but go beyond to include factors outside of school.  
 
 ```{r, warning=FALSE, include=FALSE}
 # 2.1 Extract Data
 location = "https://raw.githubusercontent.com/BrandonYChan/Statistical-Learning/main/Student_performance_10k.csv"
 
-df <- read_csv(location, show_col_types = FALSE, n_max=10000)
+df <- read_csv(location, show_col_types = FALSE)
 ```
 
 #We start by cleaning our data; renaming columns for clarity, converting column types, generating attributes, and filtering rows and columns. We filter duplicate rows, and interpolate using column means for missing numerical variables, we fill variables where possible to fix inconsistencies between gpa and gpa_letter, then drop the remaining rows missing key factor variables.
@@ -128,8 +126,6 @@ df2 <- df |>
          gpa_letter = as.factor(if_else(gpa_letter == "Fail", "F", gpa_letter)),    
          
          gpa_desirable = as.factor(if_else(gpa_letter %in% c("Fail","D","C"), "UnDesirable", "Desirable"))
-         
-         
        ) |>
        select(-c("roll_no"))   
 ```
@@ -141,10 +137,6 @@ df2 <- df |>
 
 #Remove Any Duplicates
 df3 <- distinct(df2)
-
-
-# sum(is.na(df3))
-
 
 #Sometimes GPA_Letter is missing --> Fill Using GPA
 df3 <- df3 |>
@@ -158,7 +150,6 @@ df3 <- df3 |>
           gpa < 37.5 ~ "F",
           TRUE ~ sample(c("A","B","C","D","F"),1)
         ))
-
 
 #Sometimes GPA is missing --> Estimate Using Letter
 df3 <- df3 |>
@@ -223,10 +214,8 @@ head(df4, 2)
 ```
 
 ```{r, include=FALSE}
-# 2.7 Split Into Train + Test Sets
+# 2.6 Split Into Train + Test Sets
 
-set.seed(10)
-#Splits Rows
 train_index <- sample(1:nrow(df4), nrow(df4)*0.8)
 
 df_train <- df4[train_index,]
@@ -271,8 +260,8 @@ pc1 <- pc$rotation[,1]
 
 pve <- pc$sdev^2 / sum(pc$sdev^2)   
 
-(pve_df <- as_data_frame(cbind(1:length(pve), pve)) %>% # Show PVE for each number of principal components
-  mutate(cumulative_pve = cumsum(pve)) %>% # Cumulative PVE for each additional PC 
+(pve_df <- as_data_frame(cbind(1:length(pve), pve)) |> # Show PVE for each number of principal components
+  mutate(cumulative_pve = cumsum(pve)) |> # Cumulative PVE for each additional PC 
   rename("num_principal_components" = "V1"))
 ```
 
@@ -354,6 +343,8 @@ points(which.min(bs_summary$bic), min(bs_summary$bic), col="red", cex=2, pch=20)
 # AIC plot
 plot(3:n_preds_uncorr, bs_summary$cp[3:n_preds_uncorr], type="b", xlab="Number of predictors", ylab="AIC")
 points(which.min(bs_summary$cp), min(bs_summary$cp), col="red", cex=2, pch=20)
+
+#SHOULD WE KEEP THIS?????? 
 # lines(seq_along(bs_summary$cp), seq_along(bs_summary$cp)+1, col="gray", lty=2)
 
 # Adjusted R^2 plot
@@ -372,9 +363,7 @@ tibble(Best_BIC = which.min(bs_summary$bic), Best_Cp = which.min(bs_summary$cp),
 ## Names of Ideal Predictors 
 
 ```{r}
-#BIC HEAVILY PENALIZED COMPLEXITY, BUT ADRSQ, AND CP BOTH SEEM TO BE OKAY WITH HIGHER, AND THE FACT LOTS OF THESE ARE ONE HOT VARIABLES MAKES ME THINK SLIGHTLY MORE IS OKAY, MAYBE WE JUST CHOOISE SOMETHING RANDOM FOR NOW, USE IT TO MOVE ON, THEN COME BACK
-
-p = 6
+p = 6  #currently arbitrarily chosen, better method???
 
 chosen_model <- bs_summary$which[p, ]
 chosen_predictors = gsub("`", "", names(chosen_model[chosen_model == TRUE]))
@@ -395,8 +384,6 @@ colnames(selected_train) <- gsub("'", "", colnames(selected_train))
 colnames(selected_test) <- gsub(" ", "_", colnames(selected_test)) 
 colnames(selected_test) <- gsub("'", "", colnames(selected_test))
 
-
-
 colnames(selected_train)
 ```
 
@@ -406,15 +393,15 @@ colnames(selected_train)
 ## 5.1 Choosing Most Effective Linear Method
 
 ```{r}
-train_x <- as.matrix(selected_train[, !colnames(selected_train) %in% c("gpa", "gpa_letter", "gpa_desirable")])  #FIX-CLS
+train_x <- as.matrix(selected_train[, !colnames(selected_train) %in% c("gpa", "gpa_letter", "gpa_desirable")])  
 train_y <- as.matrix(selected_train$gpa)
 
-test_x <- as.matrix(selected_test[, !colnames(selected_test) %in% c("gpa", "gpa_letter", "gpa_desirable")])  #FIX-CLS
+test_x <- as.matrix(selected_test[, !colnames(selected_test) %in% c("gpa", "gpa_letter", "gpa_desirable")])  
 test_y <- as.matrix(selected_test$gpa)
 
 #Linear Model
-linear_model <- lm(gpa ~ ., data=selected_train[,!colnames(selected_train) %in% c("gpa_letter", "gpa_desirable")])  #FIX-CLS
-linear_preds <- predict(linear_model, selected_test[,!colnames(selected_train) %in% c("gpa_letter", "gpa_desirable")])  #FIX-CLS
+linear_model <- lm(gpa ~ ., data=selected_train[,!colnames(selected_train) %in% c("gpa_letter", "gpa_desirable")])  
+linear_preds <- predict(linear_model, selected_test[,!colnames(selected_train) %in% c("gpa_letter", "gpa_desirable")])  
 RMSE_linear = RMSE(test_y, linear_preds)
 MAE_linear = MAE(test_y, linear_preds)
 
@@ -514,12 +501,6 @@ preds_best_gam <- best_gam %>%
 data.frame(RMSE = RMSE(preds_best_gam, selected_test$gpa), R2 = caret::R2(preds_best_gam, selected_test$gpa))
 ```
 
-
-
-
-
-
-
 # 6: Supervised Classification - LDA + Logistic Regression
 
 ## 6.1 LDA Model Creation
@@ -575,8 +556,6 @@ colnames(predicted_probs) <- levels(selected_test$gpa_desirable)
 
 #LOGISTIC REGRESSION
 
-
- 
 log_reg_model <- multinom(gpa_desirable ~ ., data = selected_train |> select(-c("gpa","gpa_letter")))
  
 #log_reg_pred_probs <- predict(log_reg_model, newdata = test_cls, type = "probs")
@@ -788,3 +767,17 @@ acc_nn_keras <- mean(pred_nn_keras == Y_nn_test_label)
 data.frame(Accuracy=acc_nn_keras)
 ```
 # 10 - Conclusions
+
+
+
+# OPTIONAL????????
+
+# 11 - Future Research
+- current emphasis on racial and economic factors + previous success
+- expansion of analysis possible for geographic, ie between schools with varying urban/rural divide,
+- possible opportunity to look at student mental health (IE: psycology, risk behaviours)
+- maybe even something about access to technology, a metric about technical capacity ~ assuming technical skills give indication for success in increasingly technical school, idk, that last bit is a stretch
+
+
+
+
