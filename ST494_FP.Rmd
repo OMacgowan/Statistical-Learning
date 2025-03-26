@@ -97,6 +97,8 @@ location = "https://raw.githubusercontent.com/BrandonYChan/Statistical-Learning/
 df <- read_csv(location, show_col_types = FALSE, n_max=10000)
 ```
 
+#We start by cleaning our data; renaming columns for clarity, converting column types, generating attributes, and filtering rows and columns. We filter duplicate rows, and interpolate using column means for missing numerical variables, we fill variables where possible to fix inconsistencies between gpa and gpa_letter, then drop the remaining rows missing key factor variables.
+
 ```{r, include=FALSE}
 # 2.2 Clean Data
 
