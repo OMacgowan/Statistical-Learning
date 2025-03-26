@@ -767,12 +767,16 @@ acc_nn_keras <- mean(pred_nn_keras == Y_nn_test_label)
 data.frame(Accuracy=acc_nn_keras)
 ```
 # 10 - Conclusions
-
+- DOT JOT MEANT TO BE EXPANDED (just my initial ideas -LD)
+- previous individual subject marks = best indicator (which is best??)
+- impact of parent education (economic + social impact? perspectives on school)
+- lunch ~ income range (tends to have less access to resource, or luxury of time)
 
 
 # OPTIONAL????????
 
 # 11 - Future Research
+- DOT JOT MEANT TO BE EXPANDED (just my initial ideas -LD)
 - current emphasis on racial and economic factors + previous success
 - expansion of analysis possible for geographic, ie between schools with varying urban/rural divide,
 - possible opportunity to look at student mental health (IE: psycology, risk behaviours)
