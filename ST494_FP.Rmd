@@ -170,7 +170,7 @@ df3 <- df3 |>
 if (any(is.na(df3))) {
   df3[] <- lapply(df3, function(x) {
     if (is.numeric(x)) {
-      replace(x, is.na(x), mean(x, na.rm = TRUE))
+      replace(x, is.na(x), round(mean(x, na.rm = TRUE)))
     } else {
       x
     }
@@ -185,19 +185,24 @@ head(df3, 2)
 
 ## Variable Distributions
 
+#We now want to get more familier with our data, looking first at the numeric columns, we observe all seem approximately normal, which is to be expected given their nature. We note they all seem to be within acceptable range (0,100). We next analyze the boolean columns, none of which have one boolean option which dominated the data. Notably there seems to be an approximately equal number of males and females, which is a good sign that our sample is proportional to an entire group. Finally we analyze the true factors, eduction and race, and once again no one factor dominates the data, while factors are not exactly normally distributed, nor should they be, there is healthy variation between rows with no one factor representing too few rows.
+
 ```{r}
 ## 2.4 Display Variable Distributions
 
 #Display Numeric
-df_numeric <- df3 |> select(where(is.numeric)) |> pivot_longer(cols = everything(), names_to = "variable", values_to = "value")
+df_numeric <- df3 |> select(any_of(c("gpa", "recent_math_score", "recent_science_score", "recent_writing_score"))) |> pivot_longer(cols = everything(), names_to = "variable", values_to = "value")
 ggplot(df_numeric, aes(x = value)) + geom_histogram(bins = 30) +  facet_wrap(~ variable, scales = "free")  
 
 #Display Factor
-df_factor <- df3 |> select(where(is.factor)) |> pivot_longer(cols = everything(), names_to = "variable", values_to = "value") 
+df_factor <- df3 |> mutate(across(c("has_prepared", "has_subsidized_lunch", "is_male"), as.factor )) |> select(where(is.factor)) |>
+                 pivot_longer(cols = everything(), names_to = "variable", values_to = "value") 
 ggplot(df_factor, aes(x = value)) + geom_bar() + facet_wrap(~ variable, scales = "free") 
 ```
 
 ## Encoded Data Frame
+
+From here, our next step in processing is to convert our factor variables into one hot notation to be used in predictive models. We modify both parent_eduction and race, as well as converting boolean factor variables into integers for use in models. 
 
 ```{r}
 # 2.5 Format For Classification + Regression
@@ -208,27 +213,6 @@ df4 <- df3 |>
   transform(has_subsidized_lunch = as.integer(has_subsidized_lunch), has_prepared=as.integer(has_subsidized_lunch), is_male=as.integer(is_male))
 
 head(df4, 2)
-```
-
-```{r, include=FALSE}
-# 2.6 Class Balancing
-
-#OPTIONAL??
-
-#table(df4$gpa_desirable)
-
-#min_class_size <- min(table(df4$gpa_desirable))
-
-
-#df4 <- df4 |>
-#  group_by(gpa_desirable) |>
-#  sample_n(min_class_size) |>
- # ungroup()
-
-table(df4$gpa_desirable)
-
-# Check the new class distribution
-
 ```
 
 ```{r, include=FALSE}
