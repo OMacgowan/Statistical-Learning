@@ -47,6 +47,13 @@ if(! require("rpart.plot")){ install.packages("rpart.plot")}
 if(! require("randomForest")){ install.packages("randomForest")}
 if(! require("gam")){ install.packages("gam")}
 
+# MOVING IMPORTS WITH THE REST
+
+# if(!require("keras")) {install.packages("keras")}
+# reticulate::install_python(version = '3.11.9')
+# install_keras(method = "virtualenv")
+
+
 library(tidyverse)
 library(e1071)
 library(MASS)
@@ -64,6 +71,10 @@ library(tree)
 library(gam)
 library(pander)
 library(knitr)
+library(nnet)
+library(rpart)
+library(e1071)
+library(keras)
 
 select <- dplyr::select
 ```
@@ -114,13 +125,13 @@ df2 <- df |>
          race_ethnicity = as.factor(str_sub(df$race_ethnicity, -1, -1)),
          parent_education = as.factor(parent_education),
          has_prepared = as.integer(has_prepared),
-         gpa_letter = as.factor(if_else(gpa_letter == "Fail", "F", gpa_letter)),    #CLS-FIX
+         gpa_letter = as.factor(if_else(gpa_letter == "Fail", "F", gpa_letter)),    
          
          gpa_desirable = as.factor(if_else(gpa_letter %in% c("Fail","D","C"), "UnDesirable", "Desirable"))
          
          
        ) |>
-       select(-c("roll_no"))   #CLS-FIX
+       select(-c("roll_no"))   
 ```
 
 ## The Student Performance Dataset
@@ -162,10 +173,6 @@ df3 <- df3 |>
           TRUE ~ sample(0:100,1)
         ))
 
-# sum(is.na(df3))
-
-
-
 #Replace Missing NUMERIC Values With Column Mean
 if (any(is.na(df3))) {
   df3[] <- lapply(df3, function(x) {
@@ -178,7 +185,7 @@ if (any(is.na(df3))) {
 }
 
 #Dropping Missing Factor Values
-df3 <- df3[complete.cases(df3[c("race_ethnicity", "parent_education", "gpa_desirable", "gpa_letter")]), ]   ###CLS-FIX
+df3 <- df3[complete.cases(df3[c("race_ethnicity", "parent_education", "gpa_desirable", "gpa_letter")]), ]   
 
 head(df3, 2)
 ```
@@ -209,7 +216,7 @@ From here, our next step in processing is to convert our factor variables into o
 
 df4 <- df3 |> 
   bind_cols(as.data.frame(model.matrix(~ `race_ethnicity` + `parent_education` - 1, data = df3))) |>
-  select(-c("race_ethnicity","parent_education")) %>% 
+  select(-c("race_ethnicity","parent_education")) |>
   transform(has_subsidized_lunch = as.integer(has_subsidized_lunch), has_prepared=as.integer(has_subsidized_lunch), is_male=as.integer(is_male))
 
 head(df4, 2)
@@ -234,9 +241,9 @@ df_test <- df4[-train_index,]
 # 3.1 PCA: Generate Principle Components Train + Test
 
 # Find Principal Components 
-pc <- prcomp(df_train |> select(-c("gpa_desirable","gpa_letter")), scale=TRUE)   #CLS-FIX
+pc <- prcomp(df_train |> select(-c("gpa_desirable","gpa_letter")), scale=TRUE)   
 
-pc2 <- prcomp(df_test |> select(-c("gpa_desirable","gpa_letter")), scale=TRUE)  #CLS-FIX
+pc2 <- prcomp(df_test |> select(-c("gpa_desirable","gpa_letter")), scale=TRUE)  
 
 #Highlight Distribution Of TRAIN GPA in PC
 gpa_colors <- as.factor(df_train$gpa_letter)
@@ -556,7 +563,6 @@ legend("topright", legend = levels(error_colors),
        pch = 20, title = "Reasonable Prediction")
 
 
-##INTERESTING PLOT!!!!!!!!!!!!!!!!!!!!!
 predicted_probs <- lda_preds$posterior
 colnames(predicted_probs) <- levels(selected_test$gpa_desirable)
 ```
@@ -569,7 +575,7 @@ colnames(predicted_probs) <- levels(selected_test$gpa_desirable)
 
 #LOGISTIC REGRESSION
 
-library(nnet)
+
  
 log_reg_model <- multinom(gpa_desirable ~ ., data = selected_train |> select(-c("gpa","gpa_letter")))
  
@@ -620,7 +626,6 @@ print(log_reg_accuracy)
 ```{r, include=FALSE}
 # 7.1 Decision Tree
 
-library(rpart)
 train_input <- selected_train |> select(-gpa, -gpa_letter) 
 decision_tree <- rpart(gpa_desirable ~ ., train_input)
 
@@ -674,14 +679,9 @@ varImpPlot(random_forest_model)
 ```{r, include=FALSE}
 # 8.1 Comparing SVM Models
 
-# # This won't fully run on my laptop (been going 10 mins) so it won't knit
-# 
-
-#IF YOU LAPTOP IS STRUGGLING WE DONT HAVE TO USE BEST WE CAN JUST USE SOME DEFAULT IE: 1
-# (SEE BELOW)
 
 # #SVM
- library(e1071)
+
 # 
 try = seq(1,1 #10
           ,by=1)
@@ -738,13 +738,7 @@ tribble(~"LINEAR MIS", ~"RADIAL MIS", ~"QUAD MIS",
 ```{r, include=FALSE}
 # 9.1 Loading Keras into the Workspace
 
-# Moved installations + imports here because they take a while 
-
-# if(!require("keras")) {install.packages("keras")}
-# reticulate::install_python(version = '3.11.9')
-# install_keras(method = "virtualenv")
-
-library(keras)
+#MOVEING THIS BACK UP
 ```
 
 
@@ -753,23 +747,23 @@ library(keras)
 
 # dim(selected_train)
 
-X_nn_train <- as.matrix(selected_train %>% select(-c("gpa_letter", gpa_desirable, gpa)))
+X_nn_train <- as.matrix(selected_train |> select(-c("gpa_letter", gpa_desirable, gpa)))
 Y_nn_train <- as.matrix(model.matrix(~gpa_letter -1, data=selected_train))
 
-nn_keras <- keras_model_sequential() %>%
-  layer_dense(units=50, activation="relu", input_shape=6) %>%
-  layer_dropout(rate=0.1) %>%
-  layer_dense(units=25, activation="relu") %>%
+nn_keras <- keras_model_sequential() |>
+  layer_dense(units=50, activation="relu", input_shape=6) |>
+  layer_dropout(rate=0.1) |>
+  layer_dense(units=25, activation="relu") |>
   layer_dense(units=length(unique(selected_train$gpa_letter)), activation="softmax")
 
-nn_keras %>% 
+nn_keras |>
   compile(
     loss="categorical_crossentropy",
     optimizer=optimizer_adam(),
     metrics=c("accuracy")
   )
 
-nn_keras %>% 
+nn_keras |>
   fit(
     X_nn_train, Y_nn_train,
     epochs=25,
@@ -782,7 +776,7 @@ nn_keras %>%
 ```{r}
 # 9.3 Evaluating the Network
 
-X_nn_test <- as.matrix(selected_test %>% select(-c("gpa_letter", gpa_desirable, gpa)))
+X_nn_test <- as.matrix(selected_test |> select(-c("gpa_letter", gpa_desirable, gpa)))
 Y_nn_test <- as.matrix(model.matrix(~gpa_letter -1, data=selected_test))
 # summary(nn_keras)
 pred_nn_keras_prob <- predict(nn_keras, X_nn_test, type="class")
@@ -791,34 +785,6 @@ pred_nn_keras <- colnames(pred_nn_keras_prob)[apply(pred_nn_keras_prob, 1, which
 Y_nn_test_label <- colnames(Y_nn_test)[apply(Y_nn_test, 1, which.max)]
 
 acc_nn_keras <- mean(pred_nn_keras == Y_nn_test_label)
-#
 data.frame(Accuracy=acc_nn_keras)
 ```
-
-
-
-
-
 # 10 - Conclusions
-
-RANDOM IDEAS (FEEL FREE TO IMPLEMENT OR DELETE)
-
-Summarize Findings From Methods (IE compare RMSE error, or classification error): in a dataframe??
-
-Also (MAYBE) those shitty pc plots i made could be used to show how misclassification is distibuted between methods, although no pressure, 
-
-
-(IDEAS FOR) General Conclusion Topics/Talking Points:
- - most influential (recent grades from individual classes)
- - following (home factors: IE discounted lunch ~ less weight, parent eduction ~ wealth???, attitudes toward education??)
- - preparation as a indicator of success?
- - ethnicity (we dont know which are which, so idk how we can talk about it, but perhaps maybe say something along that lines of, certain ethnicitys have been finanically disadvantaged in past, and maybe higher likelihood of immigration/instability, or maybe school language isnt first language??, idk.
-
-
-
-
-
-
-
-
-
