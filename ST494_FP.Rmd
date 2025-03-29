@@ -717,12 +717,17 @@ tribble(~"LINEAR MIS", ~"RADIAL MIS", ~"QUAD MIS",
 ```{r, include=FALSE}
 # 9.1 Loading Keras into the Workspace
 
-#MOVEING THIS BACK UP
+#I MOVED THIS BACK UP
 ```
 
 
 ```{r, include=FALSE}
 # 9.2 Creating the Network
+
+
+
+#CLASSIFY: GPA_DESIRABLE INSTEAD OF GPA_LETTER???????
+
 
 # dim(selected_train)
 
@@ -754,6 +759,9 @@ nn_keras |>
 
 ```{r}
 # 9.3 Evaluating the Network
+
+
+#CLASSIFY: GPA_DESIRABLE INSTEAD OF GPA_LETTER???????
 
 X_nn_test <- as.matrix(selected_test |> select(-c("gpa_letter", gpa_desirable, gpa)))
 Y_nn_test <- as.matrix(model.matrix(~gpa_letter -1, data=selected_test))
