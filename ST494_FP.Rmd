@@ -1,6 +1,6 @@
 ---
 title: "Predicting GPA and Interpreting Results"
-author: "Brandon Chan + Lucas Duncan"
+author: "Brandon Chan, Lucas Duncan"
 date: "2025-03-07"
 output: 
   html_document: 
@@ -8,7 +8,7 @@ output:
   pdf_document: default
 ---
 
-```{r}
+```{r, include=FALSE}
 #NOTES TO SELF:::::::::
   
 #-GPA is sum of 4 Classes, So any model cant use all 4
@@ -48,6 +48,10 @@ if(! require("gam")){ install.packages("gam")}
 # reticulate::install_python(version = '3.11.9')
 # install_keras(method = "virtualenv")
 
+# Note: keras must be loaded after python and tensorflow are installed
+# Otherwise R session must be refreshed
+library(keras)
+
 
 library(tidyverse)
 library(e1071)
@@ -69,7 +73,6 @@ library(knitr)
 library(nnet)
 library(rpart)
 library(e1071)
-library(keras)
 
 select <- dplyr::select
 
@@ -77,27 +80,26 @@ select <- dplyr::select
 set.seed(10)
 ```
 
-# Executive Summary and Contents 
+# Executive Summary and Contents
 
 ```{r}
 contents <- tribble(
   ~Index, ~Category, ~Method,
-  1, "Introduction", "Written",
-  2, "Preprocessing", "Data Description and Encoding",
-  3, "Unsupervised Learning/Analysis", "PCA and Clustering",
-  4, "Preprocessing", "Variable Selection",
-  5, "Supervised Regression", "Linear and Non-Linear Regression",
-  6, "Supervised Linear Classification", "LDA and Logistic Regression",
-  7, "Supervised Non-Linear Classification", "Tree-Based Methods, Support Vector Machines",
-  8, "Deep Learning", "Neural Networks",
-  9, "Conclusion", "Written", 
+  1, "Introduction and Tidying", "Importing, Wrangling and Encoding",
+  2, "Unsupervised Learning and Analysis", "PCA and Clustering",
+  3, "Preprocessing", "Variable Selection",
+  4, "Supervised Regression", "Linear and Non-Linear Regression",
+  5, "Supervised Linear Classification", "LDA and Logistic Regression",
+  6, "Supervised Non-Linear Classification", "Tree-Based Methods and Support Vector Machines",
+  7, "Deep Learning", "Neural Network",
+  8, "Conclusion and Future Research", "Written Description", 
 ) 
 contents
 ```
 
-# Introduction
+# 1. Introduction and Preprocessing
 
-By analyzing different factors that contribute to student performance, we aim to provide insight into how institutions can improve educational and environmental factors that foster student success. This is an issue that we can relate to directly. As students ourselves, we understand that success in academics is influenced by several factors that include preparation and ability, but go beyond to include factors outside of school.  
+By analyzing different factors that contribute to student performance, we aim to provide insight into how institutions can improve educational and environmental factors that foster student success. This is an issue that we can relate to directly. As students ourselves, we understand that success in academics is influenced by several factors that include preparation and ability, but go beyond to include factors outside of school.
 
 ```{r, warning=FALSE, include=FALSE}
 # 2.1 Extract Data
@@ -106,7 +108,7 @@ location = "https://raw.githubusercontent.com/BrandonYChan/Statistical-Learning/
 df <- read_csv(location, show_col_types = FALSE)
 ```
 
-#We start by cleaning our data; renaming columns for clarity, converting column types, generating attributes, and filtering rows and columns. We filter duplicate rows, and interpolate using column means for missing numerical variables, we fill variables where possible to fix inconsistencies between gpa and gpa_letter, then drop the remaining rows missing key factor variables.
+We start by cleaning our data; renaming columns for clarity, converting column types, generating attributes, and filtering rows and columns. We filter duplicate rows, and interpolate using column means for missing numerical variables, we fill variables where possible to fix inconsistencies between gpa and gpa_letter, then drop the remaining rows missing key factor variables.
 
 ```{r, include=FALSE}
 # 2.2 Clean Data
@@ -130,7 +132,7 @@ df2 <- df |>
        select(-c("roll_no"))   
 ```
 
-## The Student Performance Dataset
+## 1.1 The Student Performance Dataset
 
 ```{r}
 # 2.3 Interpolate NA values
@@ -181,9 +183,9 @@ df3 <- df3[complete.cases(df3[c("race_ethnicity", "parent_education", "gpa_desir
 head(df3, 2)
 ```
 
-## Variable Distributions
+## 1.2 Variable Distributions
 
-#We now want to get more familier with our data, looking first at the numeric columns, we observe all seem approximately normal, which is to be expected given their nature. We note they all seem to be within acceptable range (0,100). We next analyze the boolean columns, none of which have one boolean option which dominated the data. Notably there seems to be an approximately equal number of males and females, which is a good sign that our sample is proportional to an entire group. Finally we analyze the true factors, eduction and race, and once again no one factor dominates the data, while factors are not exactly normally distributed, nor should they be, there is healthy variation between rows with no one factor representing too few rows.
+We now want to get more familiar with our data, looking first at the numeric columns, we observe all seem approximately normal, which is to be expected given their nature. We note they all seem to be within acceptable range (0,100). We next analyze the boolean columns, none of which have one boolean option which dominated the data. Notably there seems to be an approximately equal number of males and females, which is a good sign that our sample is proportional to an entire group. Finally we analyze the true factors, education and race, and once again no one factor dominates the data, while factors are not exactly normally distributed, nor should they be, there is healthy variation between rows with no one factor representing too few rows.
 
 ```{r}
 ## 2.4 Display Variable Distributions
@@ -198,9 +200,9 @@ df_factor <- df3 |> mutate(across(c("has_prepared", "has_subsidized_lunch", "is_
 ggplot(df_factor, aes(x = value)) + geom_bar() + facet_wrap(~ variable, scales = "free") 
 ```
 
-## Encoded Data Frame
+## 1.3 Encoded Data Frame
 
-From here, our next step in processing is to convert our factor variables into one hot notation to be used in predictive models. We modify both parent_eduction and race, as well as converting boolean factor variables into integers for use in models. 
+From here, our next step in processing is to convert our factor variables into one hot notation to be used in predictive models. We modify both parent_education and race, as well as converting boolean factor variables into integers for use in models.
 
 ```{r}
 # 2.5 Format For Classification + Regression
@@ -222,10 +224,11 @@ df_train <- df4[train_index,]
 df_test <- df4[-train_index,]
 ```
 
-# 3: Data Exploration with Unsupervised Methods (PCA and Clustering)
+# 2: Data Exploration with Unsupervised Methods (PCA and Clustering)
 
-## 3.1 PCA: Generate Principle Components Train + Test
-```{r}
+## 2.1 PCA: Generating Principle Components
+
+```{r, warning=FALSE, message=FALSE}
 
 # 3.1 PCA: Generate Principle Components Train + Test
 
@@ -242,7 +245,8 @@ legend("topright", legend = levels(gpa_colors),
        pch = 20, title = "GPA Letter")
 ```
 
-## 3.2 Impact of Variables on the First Principle Component
+## 2.2 Impact of Variables on the First Principle Component
+
 ```{r}
 
 # 3.2 Impact of Variables on the First Principle Component
@@ -253,7 +257,7 @@ pc1 <- pc$rotation[,1]
                   arrange(desc(abs(pc1_loading))))
 ```
 
-## 3.3 Proportion of Variance Explained (PVE)
+## 2.3 Proportion of Variance Explained (PVE)
 
 ```{r}
 # 3.3 Proportion of Variance Explained (PVE)
@@ -265,7 +269,7 @@ pve <- pc$sdev^2 / sum(pc$sdev^2)
   rename("num_principal_components" = "V1"))
 ```
 
-## 3.4 Projecting Data Onto the First 2 Principal Components
+## 2.4 Projecting Data Onto the First 2 Principal Components
 
 ```{r}
 # 3.4 Projecting Data Onto the First 2 Principal Components
@@ -273,7 +277,7 @@ pve <- pc$sdev^2 / sum(pc$sdev^2)
 biplot(pc, scale = 0, cex=0.4)
 ```
 
-## 3.6 Ideal Number of Clusters
+## 2.5 Ideal Number of Clusters
 
 ```{r, warning=FALSE}
 # 3.6 Ideal Number of Clusters
@@ -308,18 +312,19 @@ points(x=4, y=avg_scores[3], col="red", cex=2, pch=20) # Peak at k=3
 
 ideal_clusters <- 4
 ```
-## 3.7 K-Means Clustering on PC1 and PC2
 
-```{r} 
+## 2.6 K-Means Clustering on PC1 and PC2
+
+```{r}
 # 3.7 K-Means Clustering on PC1 and PC2
 
 km <- kmeans(pc$x[,1:2], centers=ideal_clusters, nstart=90) 
 plot(pc$x, col = (km$cluster +1), pch=20, cex=2)
 ```
 
-# 4: Variable Selection
+# 3: Variable Selection
 
-## Evaluating Criterion for Best Subset Selection
+## 3.1 Evaluating Criterion for Best Subset Selection
 
 ```{r, warning=FALSE, message=FALSE}
 
@@ -352,7 +357,7 @@ plot(3:n_preds_uncorr, bs_summary$adjr2[3:n_preds_uncorr], type="b", xlab="Numbe
 points(which.max(bs_summary$adjr2), max(bs_summary$adjr2), col="red", cex=2, pch=20)
 ```
 
-## Ideal Number of Variables for Each Criterion
+## 3.2 Ideal Number of Variables for Each Criterion
 
 ```{r}
 # 4.2 Extracting Key Variables
@@ -360,7 +365,7 @@ points(which.max(bs_summary$adjr2), max(bs_summary$adjr2), col="red", cex=2, pch
 tibble(Best_BIC = which.min(bs_summary$bic), Best_Cp = which.min(bs_summary$cp), Best_Adjusted_Rsq = which.max(bs_summary$adjr2))
 ```
 
-## Names of Ideal Predictors 
+## 3.3 Names of Ideal Predictors
 
 ```{r}
 p = 6  #currently arbitrarily chosen, better method???
@@ -387,10 +392,9 @@ colnames(selected_test) <- gsub("'", "", colnames(selected_test))
 colnames(selected_train)
 ```
 
+# 4: Supervised Regression - Linear + Non Linear
 
-# 5: Supervised Regression - Linear + Non Linear
-
-## 5.1 Choosing Most Effective Linear Method
+## 4.1 Choosing Most Effective Linear Method
 
 ```{r}
 train_x <- as.matrix(selected_train[, !colnames(selected_train) %in% c("gpa", "gpa_letter", "gpa_desirable")])  
@@ -426,8 +430,7 @@ tribble(~"Loss Type", ~"Unregularised Linear", ~"LASSO", ~"Ridge",
 
 ```
 
-
-## 5.2 Extracting Insight And Evaluating Chosen Linear Method
+## 4.2 Extracting Insight And Evaluating Chosen Linear Method
 
 ### Predictor Coefficients
 
@@ -438,13 +441,12 @@ tribble(~"Loss Type", ~"Unregularised Linear", ~"LASSO", ~"Ridge",
 coef(lasso_model)
 ```
 
-### Accuracy Within 10% 
+### Accuracy Within 10%
 
 ```{r}
 accuracy_within_10 <- mean(abs(selected_test$gpa -lasso_predictions) < 10)
 accuracy_within_10
 ```
-
 
 ```{r}
 #LASSO MODEL EVALUATION:
@@ -455,8 +457,7 @@ legend("topright", legend = levels(error_colors),
        pch = 20, title = "Reasonable Prediction")
 ```
 
-
-## 5.3 Non-linear Regression: GAM
+## 4.3 Non-linear Regression: GAM
 
 ```{r, include=FALSE}
 # Cross Validation to Choose the Best One
@@ -501,9 +502,9 @@ preds_best_gam <- best_gam %>%
 data.frame(RMSE = RMSE(preds_best_gam, selected_test$gpa), R2 = caret::R2(preds_best_gam, selected_test$gpa))
 ```
 
-# 6: Supervised Classification - LDA + Logistic Regression
+# 5: Supervised Linear Classification - LDA + Logistic Regression
 
-## 6.1 LDA Model Creation
+## 5.1 LDA Model Creation
 
 ```{r, include=FALSE}
 # 6.1 LDA Model Creation
@@ -518,11 +519,11 @@ table(lda_class, selected_test$gpa_desirable)
 summary(lda_model)
 ```
 
-### LDA Accuracy
+## 5.2 LDA Model Evaluation
 
 ```{r}
 accuracy <- mean(lda_class == selected_test$gpa_desirable)
-print(accuracy)
+print(paste("Logistic regression accuracy: ", accuracy))
 
 
 #FIND DISCRIMINANT SCORE???
@@ -530,7 +531,7 @@ print(accuracy)
 #IMPROVE???
 ```
 
-## 6.2 LDA Model Evaluation
+
 
 ```{r}
 # 6.2 LDA Model Evaluation
@@ -548,8 +549,7 @@ predicted_probs <- lda_preds$posterior
 colnames(predicted_probs) <- levels(selected_test$gpa_desirable)
 ```
 
-
-## 6.3 Logistic Model Creation
+## 5.3 Logistic Model Creation
 
 ```{r, include=FALSE}
 # 6.3 Logistic Model Creation
@@ -567,7 +567,7 @@ log_reg_accuracy <- mean(log_reg_pred_class == selected_test$gpa_desirable)
 
 ```
 
-## 6.4 Logistic Model Evaluation
+## 5.4 Logistic Model Evaluation
 
 ### Plotting Logistic Regression Model Evaluation
 
@@ -588,19 +588,15 @@ legend("topright", legend = levels(error_colors),
 table(log_reg_pred_class, selected_test$gpa_desirable)
 ```
 
-### Logistic Regression Metrics 
+### Logistic Regression Metrics
 
 ```{r}
 print(log_reg_accuracy)
 ```
 
+# 6: Supervised Classification - Tree-Based Methods and Support Vector Machines
 
-
-
-# 7: Supervised Classification - Tree-Based Methods
-
-
-## 7.1 Decision Tree
+## 6.1 Decision Tree
 
 ```{r, include=FALSE}
 # 7.1 Decision Tree
@@ -617,8 +613,6 @@ summary(decision_tree)
 rpart.plot(decision_tree)
 ```
 
-## 7.2 Random Forest Creation
-
 ```{r, include=FALSE}
 # 7.2 Random Forest Creation
 
@@ -626,7 +620,7 @@ random_forest_model <- randomForest(gpa_desirable~., train_input, ntree=500, imp
 summary(random_forest_model)
 ```
 
-## 7.3 Random Forest Evaluation
+## 6.2 Random Forest
 
 ### Confusion Matrix
 
@@ -648,12 +642,7 @@ importance(random_forest_model)
 varImpPlot(random_forest_model)
 ```
 
-
-
-# 8: Supervised Classification - Support Vector Machines
-
-
-## 8.1 Comparing SVM Models
+## 6.3 Comparing SVM Models
 
 ```{r, include=FALSE}
 # 8.1 Comparing SVM Models
@@ -693,13 +682,12 @@ best <- tune(svm, gpa_desirable ~ ., data = train, ranges = list(cost = try),ker
 #
 ```
 
-
 ```{r}
 tribble(~"LINEAR MIS", ~"RADIAL MIS", ~"QUAD MIS",
          lin_mis, rad_mis, quad_mis)
 ```
 
-## 8.2 Display
+## 6.4 SVM Visualization
 
 ```{r}
 # 8.2 Display
@@ -711,8 +699,7 @@ tribble(~"LINEAR MIS", ~"RADIAL MIS", ~"QUAD MIS",
         pch = 20, title = "Reasonable Prediction")
 ```
 
-
-# 9 - Deep Learning
+# 7 - Deep Learning
 
 ```{r, include=FALSE}
 # 9.1 Loading Keras into the Workspace
@@ -720,7 +707,7 @@ tribble(~"LINEAR MIS", ~"RADIAL MIS", ~"QUAD MIS",
 #I MOVED THIS BACK UP
 ```
 
-
+## 7.1 Neural Network for GPA Letter
 ```{r, include=FALSE}
 # 9.2 Creating the Network
 
@@ -755,7 +742,7 @@ nn_keras |>
   )
 ```
 
-### Evaluating the Neural Network
+## 7.2 Evaluating the Neural Network for GPA Letter
 
 ```{r}
 # 9.3 Evaluating the Network
@@ -774,22 +761,39 @@ Y_nn_test_label <- colnames(Y_nn_test)[apply(Y_nn_test, 1, which.max)]
 acc_nn_keras <- mean(pred_nn_keras == Y_nn_test_label)
 data.frame(Accuracy=acc_nn_keras)
 ```
-# 10 - Conclusions
-- DOT JOT MEANT TO BE EXPANDED (just my initial ideas -LD)
-- previous individual subject marks = best indicator (which is best??)
-- impact of parent education (economic + social impact? perspectives on school)
-- lunch ~ income range (tends to have less access to resource, or luxury of time)
+
+## 7.3 Neural Network for Desirable GPA
+
+```{r}
+y_nn_binary <- ifelse(selected_train$gpa_desirable=="Desirable", 1, 0)
+test_binary <- selected_test |> 
+  select(-c(gpa, gpa_letter)) |> 
+  transform(gpa_desirable = ifelse(gpa_desirable=="Desirable", 1, 0))
+
+nnet_binary <- nnet(x=X_nn_train, y=y_nn_binary, data=train_nn_binary, skip=FALSE, size=20, entropy=TRUE, trace=FALSE, decay=0.01)
+
+pred_nnet_binary <- nnet_binary |> predict(test_binary, type="class")
+print(paste("Accuracy:", mean(pred_nnet_binary==test_binary$gpa_desirable)))
+      
+# Perform cross-validation to determine hyperparameters
+
+```
 
 
-# OPTIONAL????????
+# 8 - Conclusions and Future Research
 
-# 11 - Future Research
-- DOT JOT MEANT TO BE EXPANDED (just my initial ideas -LD)
-- current emphasis on racial and economic factors + previous success
-- expansion of analysis possible for geographic, ie between schools with varying urban/rural divide,
-- possible opportunity to look at student mental health (IE: psycology, risk behaviours)
-- maybe even something about access to technology, a metric about technical capacity ~ assuming technical skills give indication for success in increasingly technical school, idk, that last bit is a stretch
+## 8.1 Conclusions 
+-   DOT JOT MEANT TO BE EXPANDED (just my initial ideas -LD)
+-   previous individual subject marks = best indicator (which is best??)
+-   impact of parent education (economic + social impact? perspectives on school)
+-   lunch \~ income range (tends to have less access to resource, or luxury of time)
 
+## 8.2 Future Research
 
+OPTIONAL????????
 
-
+-   DOT JOT MEANT TO BE EXPANDED (just my initial ideas -LD)
+-   current emphasis on racial and economic factors + previous success
+-   expansion of analysis possible for geographic, ie between schools with varying urban/rural divide,
+-   possible opportunity to look at student mental health (IE: psycology, risk behaviours)
+-   maybe even something about access to technology, a metric about technical capacity \~ assuming technical skills give indication for success in increasingly technical school, idk, that last bit is a stretch
