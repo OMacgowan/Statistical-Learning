@@ -41,6 +41,7 @@ if(! require("rpart")){ install.packages("rpart")}
 if(! require("rpart.plot")){ install.packages("rpart.plot")}
 if(! require("randomForest")){ install.packages("randomForest")}
 if(! require("gam")){ install.packages("gam")}
+if(! require("pls")){ install.packages("pls")}
 
 # MOVING IMPORTS WITH THE REST
 
@@ -73,6 +74,7 @@ library(knitr)
 library(nnet)
 library(rpart)
 library(e1071)
+library(pls)
 
 select <- dplyr::select
 
@@ -108,7 +110,6 @@ location = "https://raw.githubusercontent.com/BrandonYChan/Statistical-Learning/
 df <- read_csv(location, show_col_types = FALSE)
 ```
 
-We start by cleaning our data; renaming columns for clarity, converting column types, generating attributes, and filtering rows and columns. We filter duplicate rows, and interpolate using column means for missing numerical variables, we fill variables where possible to fix inconsistencies between gpa and gpa_letter, then drop the remaining rows missing key factor variables.
 
 ```{r, include=FALSE}
 # 2.2 Clean Data
@@ -127,12 +128,18 @@ df2 <- df |>
          has_prepared = as.integer(has_prepared),
          gpa_letter = as.factor(if_else(gpa_letter == "Fail", "F", gpa_letter)),    
          
-         gpa_desirable = as.factor(if_else(gpa_letter %in% c("Fail","D","C"), "UnDesirable", "Desirable"))
+         gpa_desirable = as.factor(if_else(gpa_letter %in% c("Fail","D","C"), "bad_gpa", "good_gpa")) 
        ) |>
        select(-c("roll_no"))   
+
+df2 |> head(2)
 ```
 
 ## 1.1 The Student Performance Dataset
+
+The dataset consists of attributes that may have an impact on performance in school. There are academic variables that include grades in different subjects and other variables like ethnicity, gender, and economic status of the student families. There are options for regression and classification problems with this data. With the given variables, GPA seems like the most likely response variable to represent student performance. After some wrangling, gpa_letter, gpa, and gpa_desirable represent different forms of the possible response variable to predict.   
+
+We start by cleaning our data; renaming columns for clarity, converting column types, generating attributes, and filtering rows and columns. We filter duplicate rows, and interpolate using column means for missing numerical variables, we fill variables where possible to fix inconsistencies between gpa and gpa_letter, then drop the remaining rows missing key factor variables.
 
 ```{r}
 # 2.3 Interpolate NA values
@@ -222,66 +229,46 @@ train_index <- sample(1:nrow(df4), nrow(df4)*0.8)
 
 df_train <- df4[train_index,]
 df_test <- df4[-train_index,]
+
+pca_train <- df_train |> select(-c(gpa, gpa_letter, gpa_desirable))
+# pca_test <- df_test |> select(-c(gpa, gpa_letter, gpa_desirable))
+
 ```
 
 # 2: Data Exploration with Unsupervised Methods (PCA and Clustering)
 
-## 2.1 PCA: Generating Principle Components
+Before attempting to make any conclusive analysis, we want to get a better understanding of the data and relationships between variables. We start this process with unsupervised learning to understand variables that cause significant variance and groupings of observations. 
+
+## 2.1 PCA: Generating and Visualizing Principle Components
+
+We begin exploration by generating the principal components to create a 2-dimensional visualization. The first 2 principal components represent uncorrelated linear combinations that capture the most variance in the data. We plot them to see if any patterns emerge.
 
 ```{r, warning=FALSE, message=FALSE}
-
-# 3.1 PCA: Generate Principle Components Train + Test
-
 # Find Principal Components 
-pc <- prcomp(df_train |> select(-c("gpa_desirable","gpa_letter")), scale=TRUE)   
+pc <- prcomp(df_train |> select(-c(gpa, "gpa_desirable","gpa_letter")), scale=TRUE) # Scale parameter brings features to the same scale with z-score standardization
 
-pc2 <- prcomp(df_test |> select(-c("gpa_desirable","gpa_letter")), scale=TRUE)  
+pc_test <- prcomp(df_test |> select(-c(gpa, "gpa_desirable","gpa_letter")), scale=TRUE)
+```
 
+
+```{r, warning=FALSE, message=FALSE}
 #Highlight Distribution Of TRAIN GPA in PC
 gpa_colors <- as.factor(df_train$gpa_letter)
-plot(pc$x, col = gpa_colors, pch=20, cex=2)
+plot(pc$x, col = gpa_colors, pch=20, cex=2, main = "Clear Groupings Along Both Principal Component Axes")
 legend("topright", legend = levels(gpa_colors), 
        fill = 1:length(levels(gpa_colors)), 
-       pch = 20, title = "GPA Letter")
+        title = "GPA Letter")
+
+# biplot(pc, scale = 0, cex=0.4) # May find a use for this plot elsewhere
 ```
 
-## 2.2 Impact of Variables on the First Principle Component
+There appear to be 2 distinct groupings in the data, separable by the first principal component. Based on the GPA letter coloring of points, lower values of the second principal component appear to relate to higher GPA letters and vice-versa. 
 
-```{r}
+## 2.2 K-means Clustering: Ideal Number of Clusters
 
-# 3.2 Impact of Variables on the First Principle Component
-
-pc1 <- pc$rotation[,1]
-(pc1_loading_df <- cbind(names(pc1), as_data_frame(pc1)) |>
-                  rename("names" = "names(pc1)", "pc1_loading" = "value") |> 
-                  arrange(desc(abs(pc1_loading))))
-```
-
-## 2.3 Proportion of Variance Explained (PVE)
-
-```{r}
-# 3.3 Proportion of Variance Explained (PVE)
-
-pve <- pc$sdev^2 / sum(pc$sdev^2)   
-
-(pve_df <- as_data_frame(cbind(1:length(pve), pve)) |> # Show PVE for each number of principal components
-  mutate(cumulative_pve = cumsum(pve)) |> # Cumulative PVE for each additional PC 
-  rename("num_principal_components" = "V1"))
-```
-
-## 2.4 Projecting Data Onto the First 2 Principal Components
-
-```{r}
-# 3.4 Projecting Data Onto the First 2 Principal Components
-
-biplot(pc, scale = 0, cex=0.4)
-```
-
-## 2.5 Ideal Number of Clusters
+In order to check our theory on the distinct groupings of the first two principal components, we will employ k-means clustering. But first, we need to determine the optimal number of clusters to effectively show potential classes. 
 
 ```{r, warning=FALSE}
-# 3.6 Ideal Number of Clusters
-
 # within_cluster_sum_squares <- c()
 # 
 # # Calculate wcss for each number of clusters
@@ -313,16 +300,69 @@ points(x=4, y=avg_scores[3], col="red", cex=2, pch=20) # Peak at k=3
 ideal_clusters <- 4
 ```
 
-## 2.6 K-Means Clustering on PC1 and PC2
+A peak in the silhouette score appears where there are 4 different clusters, an ideal number where points are similar within a cluster and different from other clusters.
+
+## 2.3 K-Means Clustering on First 2 Principal Components
+
+We color the points on the same principal component graph, this time by the cluster that they belong to.
 
 ```{r}
-# 3.7 K-Means Clustering on PC1 and PC2
-
 km <- kmeans(pc$x[,1:2], centers=ideal_clusters, nstart=90) 
 plot(pc$x, col = (km$cluster +1), pch=20, cex=2)
 ```
 
-# 3: Variable Selection
+Clusters appear to be clearly separated by both principal components, indicating that our hypothesis that the first component significantly splits the data into 2 groups and academic feature such as grades may impact the second principal component appear plausible.
+
+## 2.4 Impact of Variables on the First Principle Component
+
+We wanted to take a closer look at specific features in addition to the overall structure of the data and principal components. So we took the top ten largest loadings (coefficients) of the first principal component. The goal is determine which variables are responsible for variance within the feature set.
+
+```{r}
+pc1 <- pc$rotation[,1]
+pc1_loading_df <- cbind(names(pc1), tibble(pc1)) |>
+                  rename("Variable Names" = "names(pc1)", "PC1 Loading" = "pc1") |> 
+                  arrange(desc(abs(`PC1 Loading`)))
+pc1_loading_df |> head(10)
+```
+
+Having a subsidized lunch and staying prepared appear to be the most significant features impacting variance in the data. Although a subsidized lunch has no obvious direct relationship to academics, it appears that socio-economic factors may be at play in some fashion. Taking an extra preparation course also seems to have a significant impact in the feature space. Preparation likely has a direct relationship with academic performance features.
+
+## 2.5 Proportion of Variance Explained (PVE)
+
+Only the first principal component was analyzed, and other principal components may tell very different stories about which features may be significant. We show how much each additional principal component contributes to the proportion of variance explained:
+
+```{r}
+pve <- pc$sdev^2 / sum(pc$sdev^2)   
+
+pve_df <- as_data_frame(cbind(1:length(pve), pve)) |> # Show PVE for each number of principal components
+  rename("PVE" = "pve") |> 
+  mutate("Cumulative PVE" = cumsum(PVE)) |> # Cumulative PVE for each additional PC 
+  rename("Number of Principal Components" = "V1")
+
+pve_df |> head(10)
+```
+
+Additional principal components contribute significantly to higher PVE. The first principal component only contributes around 12% of the variance explained and the second principal component only brings it to about 20%. We interpret this to mean that there are many notable linear combinations of features rather than a one that significantly explains variance the feature space.
+
+## 2.6 Partial Least Squares Prediction for GPA
+
+Our analysis on the principal components is predicated on the assumption that they having meaning in relation to evaluating academic performance. We evaluate this by using partial least squares to predict GPA.
+
+```{r}
+pls_reg_model <- plsr(gpa ~ ., ncomp=15, validation="CV", data=df_train |> select(-c(gpa_desirable, gpa_letter)))
+```
+
+
+```{r}
+pls_pred_regression <- predict(pls_reg_model, newdata=df_test |> select(-c(gpa_desirable, gpa_letter)))
+
+data.frame(RMSE = RMSE(pls_pred_regression, df_test$gpa))
+
+```
+
+We will compare the error with other methods later in the analysis to determine how effective the principal component are at predicting GPA, our measure for academic performance.
+
+# 3: Variable Selection for Supervised Methods
 
 ## 3.1 Evaluating Criterion for Best Subset Selection
 
@@ -451,7 +491,7 @@ accuracy_within_10
 ```{r}
 #LASSO MODEL EVALUATION:
 error_colors <- as.factor(abs(selected_test$gpa - lasso_predictions) < 10)
-plot(pc2$x, col = error_colors, pch=20, cex=2)
+plot(pc_test$x, col = error_colors, pch=20, cex=2)
 legend("topright", legend = levels(error_colors), 
        fill = 1:length(levels(error_colors)), 
        pch = 20, title = "Reasonable Prediction")
@@ -539,7 +579,7 @@ print(paste("Logistic regression accuracy: ", accuracy))
 #LDA MODEL EVALUATION:
 error_colors <- as.factor(selected_test$gpa_desirable == lda_class)
 
-plot(pc2$x, col = error_colors, pch=20, cex=2)
+plot(pc_test$x, col = error_colors, pch=20, cex=2)
 legend("topright", legend = levels(error_colors),
        fill = 1:length(levels(error_colors)),
        pch = 20, title = "Reasonable Prediction")
@@ -576,7 +616,7 @@ log_reg_accuracy <- mean(log_reg_pred_class == selected_test$gpa_desirable)
 
  #LOGISTIC MODEL EVALUATION:
 error_colors <- as.factor(log_reg_pred_class == selected_test$gpa_desirable)
-plot(pc2$x, col = error_colors, pch=20, cex=2)
+plot(pc_test$x, col = error_colors, pch=20, cex=2)
 legend("topright", legend = levels(error_colors),
        fill = 1:length(levels(error_colors)),
        pch = 20, title = "Reasonable Prediction")
@@ -693,7 +733,7 @@ tribble(~"LINEAR MIS", ~"RADIAL MIS", ~"QUAD MIS",
 # 8.2 Display
 
  error_colors <- as.factor(!lin_preds)
- plot(pc2$x, col = error_colors, pch=20, cex=2)
+ plot(pc_test$x, col = error_colors, pch=20, cex=2)
  legend("topright", legend = levels(error_colors), 
         fill = 1:length(levels(error_colors)), 
         pch = 20, title = "Reasonable Prediction")
@@ -765,15 +805,15 @@ data.frame(Accuracy=acc_nn_keras)
 ## 7.3 Neural Network for Desirable GPA
 
 ```{r}
-y_nn_binary <- ifelse(selected_train$gpa_desirable=="Desirable", 1, 0)
+y_nn_binary <- ifelse(selected_train$gpa_desirable == "good_gpa", 1, 0)
 test_binary <- selected_test |> 
   select(-c(gpa, gpa_letter)) |> 
-  transform(gpa_desirable = ifelse(gpa_desirable=="Desirable", 1, 0))
+  transform(gpa_desirable = ifelse(gpa_desirable=="good_gpa", 1, 0))
 
 nnet_binary <- nnet(x=X_nn_train, y=y_nn_binary, data=train_nn_binary, skip=FALSE, size=20, entropy=TRUE, trace=FALSE, decay=0.01)
 
 pred_nnet_binary <- nnet_binary |> predict(test_binary, type="class")
-print(paste("Accuracy:", mean(pred_nnet_binary==test_binary$gpa_desirable)))
+print(paste("Accuracy:", mean(pred_nnet_binary== test_binary$gpa_desirable)))
       
 # Perform cross-validation to determine hyperparameters
 
