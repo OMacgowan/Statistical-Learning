@@ -42,6 +42,7 @@ if(! require("rpart.plot")){ install.packages("rpart.plot")}
 if(! require("randomForest")){ install.packages("randomForest")}
 if(! require("gam")){ install.packages("gam")}
 if(! require("pls")){ install.packages("pls")}
+if(! require("car")){ install.packages("car")}
 
 # MOVING IMPORTS WITH THE REST
 
@@ -75,6 +76,7 @@ library(nnet)
 library(rpart)
 library(e1071)
 library(pls)
+library(car)
 
 select <- dplyr::select
 
@@ -131,6 +133,9 @@ df2 <- df |>
          gpa_desirable = as.factor(if_else(gpa_letter %in% c("Fail","D","C"), "bad_gpa", "good_gpa")) 
        ) |>
        select(-c("roll_no"))   
+
+# Set reference column: need to drop later to reduce multicollinearity
+df2$race_ethnicity <- relevel(df2$race_ethnicity, ref="E")
 
 df2 |> head(2)
 ```
@@ -190,6 +195,7 @@ df3 <- df3[complete.cases(df3[c("race_ethnicity", "parent_education", "gpa_desir
 head(df3, 2)
 ```
 
+
 ## 1.2 Variable Distributions
 
 We now want to get more familiar with our data, looking first at the numeric columns, we observe all seem approximately normal, which is to be expected given their nature. We note they all seem to be within acceptable range (0,100). We next analyze the boolean columns, none of which have one boolean option which dominated the data. Notably there seems to be an approximately equal number of males and females, which is a good sign that our sample is proportional to an entire group. Finally we analyze the true factors, education and race, and once again no one factor dominates the data, while factors are not exactly normally distributed, nor should they be, there is healthy variation between rows with no one factor representing too few rows.
@@ -217,10 +223,29 @@ From here, our next step in processing is to convert our factor variables into o
 df4 <- df3 |> 
   bind_cols(as.data.frame(model.matrix(~ `race_ethnicity` + `parent_education` - 1, data = df3))) |>
   select(-c("race_ethnicity","parent_education")) |>
-  transform(has_subsidized_lunch = as.integer(has_subsidized_lunch), has_prepared=as.integer(has_subsidized_lunch), is_male=as.integer(is_male))
+  transform(has_subsidized_lunch = as.integer(has_subsidized_lunch), has_prepared=as.integer(has_prepared), is_male=as.integer(is_male))
 
 head(df4, 2)
 ```
+
+## 1.4 Handling Multi-Collinearity
+
+To deal with the multicollinearity problem, we had to remove the reference column for the race_ethnicity variable to get appropriate VIF scores.
+
+```{r}
+vif_scores1 = vif(lm(gpa ~ ., data=df4 |> select(-c("gpa_letter", "gpa_desirable", "race_ethnicityn"))))
+
+vif_scores2 = vif(lm(gpa ~ ., data=df4 |> select(-c("gpa_letter", "gpa_desirable", "race_ethnicityn", "race_ethnicityE"))))
+
+data.frame("VIF Original" = head(vif_scores1, 10), "VIF with Dropped Ref." = head(vif_scores2, 10))
+```
+
+
+```{r. include=FALSE}
+df4<- df4 |> select(-c("race_ethnicityn", "race_ethnicityE"))
+
+```
+
 
 ```{r, include=FALSE}
 # 2.6 Split Into Train + Test Sets
@@ -262,7 +287,7 @@ legend("topright", legend = levels(gpa_colors),
 # biplot(pc, scale = 0, cex=0.4) # May find a use for this plot elsewhere
 ```
 
-There appear to be 2 distinct groupings in the data, separable by the first principal component. Based on the GPA letter coloring of points, lower values of the second principal component appear to relate to higher GPA letters and vice-versa. 
+There appear to be 3 distinct groupings in the data, separable by the second principal component. Based on the GPA letter coloring of points, lower values of the first principal component appear to relate to higher GPA letters and vice-versa. 
 
 ## 2.2 K-means Clustering: Ideal Number of Clusters
 
@@ -293,11 +318,13 @@ for(k in 2:10){
   avg_scores[k-1] = mean(scores[,3])
 }
 
-# Choose where there is a peak on the graph 
-plot(x=2:10, y=avg_scores, type="b", xlab="k", ylab="Silhouette Score", main="Suggests 4 Clusters")
-points(x=4, y=avg_scores[3], col="red", cex=2, pch=20) # Peak at k=3
+max_k <- which.max(avg_scores) + 1
 
-ideal_clusters <- 4
+# Choose where there is a peak on the graph 
+plot(x=2:10, y=avg_scores, type="b", xlab="k", ylab="Silhouette Score", main=paste("Suggests", max_k,  "Clusters"))
+points(x=max_k, y=avg_scores[max_k-1], col="red", cex=2, pch=20) # Peak at k=3
+
+ideal_clusters <- max_k
 ```
 
 A peak in the silhouette score appears where there are 4 different clusters, an ideal number where points are similar within a cluster and different from other clusters.
@@ -307,11 +334,11 @@ A peak in the silhouette score appears where there are 4 different clusters, an 
 We color the points on the same principal component graph, this time by the cluster that they belong to.
 
 ```{r}
-km <- kmeans(pc$x[,1:2], centers=ideal_clusters, nstart=90) 
+km <- kmeans(pc$x[,1:2], centers=ideal_clusters, nstart=25) 
 plot(pc$x, col = (km$cluster +1), pch=20, cex=2)
 ```
 
-Clusters appear to be clearly separated by both principal components, indicating that our hypothesis that the first component significantly splits the data into 2 groups and academic feature such as grades may impact the second principal component appear plausible.
+Clusters appear to be clearly separated by both principal components, indicating that our hypothesis that the first component significantly splits the data into groups and academic feature such as grades may impact the second principal component appear plausible. 
 
 ## 2.4 Impact of Variables on the First Principle Component
 
@@ -342,7 +369,7 @@ pve_df <- as_data_frame(cbind(1:length(pve), pve)) |> # Show PVE for each number
 pve_df |> head(10)
 ```
 
-Additional principal components contribute significantly to higher PVE. The first principal component only contributes around 12% of the variance explained and the second principal component only brings it to about 20%. We interpret this to mean that there are many notable linear combinations of features rather than a one that significantly explains variance the feature space.
+Additional principal components contribute significantly to higher PVE. The first principal component does not contribute to much of the variance explained and the second principal component does not increase it significantly either. We interpret this to mean that there are many notable linear combinations of features rather than a one that significantly explains variance the feature space.
 
 ## 2.6 Partial Least Squares Prediction for GPA
 
@@ -351,7 +378,6 @@ Our analysis on the principal components is predicated on the assumption that th
 ```{r}
 pls_reg_model <- plsr(gpa ~ ., ncomp=15, validation="CV", data=df_train |> select(-c(gpa_desirable, gpa_letter)))
 ```
-
 
 ```{r}
 pls_pred_regression <- predict(pls_reg_model, newdata=df_test |> select(-c(gpa_desirable, gpa_letter)))
@@ -364,15 +390,16 @@ We will compare the error with other methods later in the analysis to determine 
 
 # 3: Variable Selection for Supervised Methods
 
+Before proceeding to predict GPA with supervised linear methods, we want to ensure that predictor variables used are relevant. It could also be helpful to analyze which predictors contribute to academic success. This will help to determine what factors institutions and individuals can improve to aid in academics.
+
 ## 3.1 Evaluating Criterion for Best Subset Selection
 
+Since the dataset is not too large (~10000 rows), we feel that using best-subset selection is computationally feasible and is the optimal method for variable selection. 3 types of evaluation criterion are employed to determine the ideal variables; AIC, BIC, and adjusted R-squared. 
+
 ```{r, warning=FALSE, message=FALSE}
-
-# 4.1 Comparing Metrics
-
 par(mfrow=c(1,3))
 
-# Note: djusted plots to start from 3 predictors; looks cleaner 
+# Note: Adjusted plots to start from 3 predictors; looks cleaner 
 
 # Best subset selection
 best_subset <- regsubsets(gpa~., df_train |> select(-c("gpa_letter", "gpa_desirable")), nvmax = ncol(df_train))
@@ -393,9 +420,11 @@ points(which.min(bs_summary$cp), min(bs_summary$cp), col="red", cex=2, pch=20)
 # lines(seq_along(bs_summary$cp), seq_along(bs_summary$cp)+1, col="gray", lty=2)
 
 # Adjusted R^2 plot
-plot(3:n_preds_uncorr, bs_summary$adjr2[3:n_preds_uncorr], type="b", xlab="Number of predictors", ylab="R^2")
+plot(3:n_preds_uncorr, bs_summary$adjr2[3:n_preds_uncorr], type="b", xlab="Number of predictors", ylab="Adj. R^2")
 points(which.max(bs_summary$adjr2), max(bs_summary$adjr2), col="red", cex=2, pch=20)
 ```
+
+The best number of predictors appears different but fairly similar given each criterion. BIC heavily penalizes additional variables, so it is expected to favour a lower number of variables. AIC appears to prefer one more variable and few more variables are favoured with $R^2_{adj}$. 
 
 ## 3.2 Ideal Number of Variables for Each Criterion
 
@@ -405,14 +434,18 @@ points(which.max(bs_summary$adjr2), max(bs_summary$adjr2), col="red", cex=2, pch
 tibble(Best_BIC = which.min(bs_summary$bic), Best_Cp = which.min(bs_summary$cp), Best_Adjusted_Rsq = which.max(bs_summary$adjr2))
 ```
 
+Since BIC heavily penalizes extra predictors and adjusted $R^2_{adj}$ appears to be more lenient, we choose to use 6 predictors a value in the middle.
+
 ## 3.3 Names of Ideal Predictors
+
+The following vari
 
 ```{r}
 p = 6  #currently arbitrarily chosen, better method???
 
 chosen_model <- bs_summary$which[p, ]
 chosen_predictors = gsub("`", "", names(chosen_model[chosen_model == TRUE]))
-chosen_predictors
+chosen_predictors[2:length(chosen_predictors)]
 # We should make this output cleaner in the final edit 
 ```
 
@@ -668,12 +701,6 @@ summary(random_forest_model)
 # 7.3 Random Forest Evaluation
 
 random_forest_model$confusion
-```
-
-### Variable Importance
-
-```{r}
-importance(random_forest_model)
 ```
 
 ### Variable Importance Plot
