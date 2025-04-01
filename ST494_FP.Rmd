@@ -8,14 +8,6 @@ output:
   pdf_document: default
 ---
 
-```{r, include=FALSE}
-#NOTES TO SELF:::::::::
-  
-#-GPA is sum of 4 Classes, So any model cant use all 4
-
-# How we can predict GPA, factors that impact it, what we recommend for students to raise their GPA, institutions to evaluate GPA, and systematic issues. 
-
-```
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE)
