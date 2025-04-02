@@ -122,7 +122,7 @@ df2 <- df |>
          has_prepared = as.integer(has_prepared),
          gpa_letter = as.factor(if_else(gpa_letter == "Fail", "F", gpa_letter)),    
          
-         gpa_desirable = as.factor(if_else(gpa_letter %in% c("Fail","D","C"), "bad_gpa", "good_gpa")) 
+         gpa_desirable = as.factor(if_else(gpa_letter %in% c("Fail","D","C"), TRUE, FALSE)) 
        ) |>
        select(-c("roll_no"))   
 
@@ -235,7 +235,6 @@ data.frame("VIF Original" = head(vif_scores1, 10), "VIF with Dropped Ref." = hea
 
 ```{r. include=FALSE}
 df4<- df4 |> select(-c("race_ethnicityn", "race_ethnicityE"))
-
 ```
 
 
@@ -248,7 +247,7 @@ df_train <- df4[train_index,]
 df_test <- df4[-train_index,]
 
 pca_train <- df_train |> select(-c(gpa, gpa_letter, gpa_desirable))
-# pca_test <- df_test |> select(-c(gpa, gpa_letter, gpa_desirable))
+pca_test <- df_test |> select(-c(gpa, gpa_letter, gpa_desirable))
 
 ```
 
@@ -350,7 +349,7 @@ Having a subsidized lunch and staying prepared appear to be the most significant
 
 Only the first principal component was analyzed, and other principal components may tell very different stories about which features may be significant. We show how much each additional principal component contributes to the proportion of variance explained:
 
-```{r}
+```{r, warning=FALSE}
 pve <- pc$sdev^2 / sum(pc$sdev^2)   
 
 pve_df <- as_data_frame(cbind(1:length(pve), pve)) |> # Show PVE for each number of principal components
@@ -369,12 +368,16 @@ Our analysis on the principal components is predicated on the assumption that th
 
 ```{r}
 pls_reg_model <- plsr(gpa ~ ., ncomp=15, validation="CV", data=df_train |> select(-c(gpa_desirable, gpa_letter)))
+
+validationplot(pls_reg_model, val.type="RMSEP")
 ```
 
-```{r}
-pls_pred_regression <- predict(pls_reg_model, newdata=df_test |> select(-c(gpa_desirable, gpa_letter)))
+3 components appears optimal based on the PVE and plot.
 
-data.frame(RMSE = RMSE(pls_pred_regression, df_test$gpa))
+```{r}
+pls_pred_regression <- predict(pls_reg_model, newdata=df_test |> select(-c(gpa_desirable, gpa_letter)), ncomp=3)
+
+data.frame(RMSE = RMSE(pls_pred_regression, df_test$gpa)) 
 
 ```
 
@@ -426,20 +429,22 @@ The best number of predictors appears different but fairly similar given each cr
 tibble(Best_BIC = which.min(bs_summary$bic), Best_Cp = which.min(bs_summary$cp), Best_Adjusted_Rsq = which.max(bs_summary$adjr2))
 ```
 
-Since BIC heavily penalizes extra predictors and adjusted $R^2_{adj}$ appears to be more lenient, we choose to use 6 predictors a value in the middle.
+Since BIC heavily penalizes extra predictors and adjusted $R^2_{adj}$ appears to be more lenient, we choose to use 6 predictors, a value in the middle.
 
 ## 3.3 Names of Ideal Predictors
 
-The following vari
+The following variables contribute the most according to best subset selection:
 
 ```{r}
 p = 6  #currently arbitrarily chosen, better method???
 
 chosen_model <- bs_summary$which[p, ]
 chosen_predictors = gsub("`", "", names(chosen_model[chosen_model == TRUE]))
-chosen_predictors[2:length(chosen_predictors)]
+data.frame(ChosenPredictors=chosen_predictors[2:length(chosen_predictors)])
 # We should make this output cleaner in the final edit 
 ```
+
+We update train and test sets to only includes these predictors.
 
 ```{r, include=FALSE}
 # 4.3 Filtering Data Columns
@@ -457,9 +462,13 @@ colnames(selected_test) <- gsub("'", "", colnames(selected_test))
 colnames(selected_train)
 ```
 
-# 4: Supervised Regression - Linear + Non Linear
+# 4 Regression for Identifying Important Predictors of Academic Success
 
-## 4.1 Choosing Most Effective Linear Method
+With the selected variables, we can now test how well they predict academic performance measured in GPA. We start by training supervised regression models to predict the GPA score.
+
+## 4.1 Choosing the Most Effective Linear Method
+
+The base linear regression model, as well as linear models with LASSO and Ridge regularization are created and compared. 
 
 ```{r}
 train_x <- as.matrix(selected_train[, !colnames(selected_train) %in% c("gpa", "gpa_letter", "gpa_desirable")])  
@@ -495,34 +504,43 @@ tribble(~"Loss Type", ~"Unregularised Linear", ~"LASSO", ~"Ridge",
 
 ```
 
+Interestingly, the unregularized model outperforms LASSO and Ridge regression. This may be because we performed regularization after variable selection, so irrelevant predictors were already filtered out. Additional penalties on predictors probably only interfered with making the best predictions that minimize SSE.
+
 ## 4.2 Extracting Insight And Evaluating Chosen Linear Method
 
-### Predictor Coefficients
-
-```{r}
-# LASSO regression performs the best of these????????????//
-
-#THEREFORE OUR BEST MODEL (AND INSIGHT FROM COEFFICIENTS COMES FROM LASSO)
-coef(lasso_model)
-```
+Before making conclusive analysis, we want to ensure that the model is predicting accurately on test data. 
 
 ### Accuracy Within 10%
 
+Since the linear regression model only predicts continuous values, it wouldn't make sense to calculate accuracy directly, but we still want to ensure that the model is accurate. We resolve this by predicting how frequently predictions are within 10 points of the true GPA.  
+
 ```{r}
 accuracy_within_10 <- mean(abs(selected_test$gpa -lasso_predictions) < 10)
-accuracy_within_10
+print(paste("Accuracy within 10 GPA points: ", accuracy_within_10))
 ```
+
+The vast majority of predictions are within 10 points of the true GPA, so we feel that analysis on the impact of each attribute will be meaningful.
 
 ```{r}
 #LASSO MODEL EVALUATION:
-error_colors <- as.factor(abs(selected_test$gpa - lasso_predictions) < 10)
-plot(pc_test$x, col = error_colors, pch=20, cex=2)
+error_colors <- as.factor(abs(selected_test$gpa - linear_preds) < 10)
+plot(pc_test$x, col = error_colors, pch=20, cex=2, main="Nearly All Predictions are Within 10% of True GPA")
 legend("topright", legend = levels(error_colors), 
        fill = 1:length(levels(error_colors)), 
        pch = 20, title = "Reasonable Prediction")
 ```
 
+Since the model is fairly accurate at predicting GPA, we feel that analyzing coefficients directly can provide insight into how each predictor contributes to success.
+
+```{r}
+coef(linear_model)
+```
+
+Of the encoded variables, gender appears to be the most significant based on the raw coefficient, followed by parent education and preparation. These values suggest that societal factors meaningfully impact academic success, potentially because of different educational opportunities. Pure academic scores appear to contribute similarly to each other. This may be because students successful in one subject tend to be successful overall.
+
 ## 4.3 Non-linear Regression: GAM
+
+Although the linear model was successful, but there remains a possibility that prediction is more accurate with non-linear transformations applied to variables. We employ a generalized additive model with splines determined by cross-validation.
 
 ```{r, include=FALSE}
 # Cross Validation to Choose the Best One
@@ -563,44 +581,87 @@ best_gam <- gam(formula = gpa ~ is_male + s(recent_math_score, 3) + recent_writi
 
 preds_best_gam <- best_gam %>% 
   predict(selected_test)
-
-data.frame(RMSE = RMSE(preds_best_gam, selected_test$gpa), R2 = caret::R2(preds_best_gam, selected_test$gpa))
 ```
 
-# 5: Supervised Linear Classification - LDA + Logistic Regression
+## 4.4 Model Comparison
 
-## 5.1 LDA Model Creation
+At this point we have the best supervised linear, non-linear, and unsupervised models. By comparing each of them, we hope to obtain the best one and to understand why it performed the best. Once the model is understood, we will attempt to relate the model to real-world academic performance.
 
-```{r, include=FALSE}
-# 6.1 LDA Model Creation
+```{r}
+tribble(~Measurement, ~GAM, ~LinearModel, ~PLS,
+        "RMSE", RMSE(preds_best_gam, selected_test$gpa),RMSE(linear_preds, selected_test$gpa), RMSE(pls_pred_regression, df_test$gpa),
+        "R2", caret::R2(preds_best_gam, selected_test$gpa), caret::R2(linear_preds, selected_test$gpa), caret::R2(pls_pred_regression, df_test$gpa))
+```
 
+The generalized additive model performs the best in terms of RMSE. Non-linear splines applied to predictors appear to improve the model, indicating that GPA is not best determined by a linear combination of features. The PLS predictions formed by the first 3 principal components perform slightly worse, though not by a drastic margin. Reducing dimensionality or the number of variables seems to help the model in all methods. 
+
+Based on the results of applying regression to predict GPA, societal and educational factors both contribute to academic success.
+
+
+# 5: Linear Classification for Evaluating Predictive Accuracy of GPA Predictors
+
+The regression models allowed us show importance within the model of specific variables by analyzing coefficients, but we were unable to compute easily interpretible metrics such as accuracy directly. The purpose of our analysis is to translate our findings to the real world, and we think that a classification perspective will provide more interpretable results. Our goal in this section is to determine whether a linear decision boundary can differentiate between students having a desirable GPA.
+
+## 5.1 LDA Model
+
+The first classification method we attempt is linear discriminant analysis. We train it using the same predictors determined by variable selection.
+
+```{r, include=TRUE}
 lda_model <- lda(gpa_desirable ~ ., data = selected_train |> select(-c("gpa", "gpa_letter")))
 
 lda_preds <- predict(lda_model, newdata = selected_test |> select(-c("gpa", "gpa_letter")))
 
 lda_class <- lda_preds$class
-table(lda_class, selected_test$gpa_desirable)
-
-summary(lda_model)
 ```
 
-## 5.2 LDA Model Evaluation
+We plot the distribution of LD1 discriminant scores to look for skew or multimodal properties.
 
-```{r}
-accuracy <- mean(lda_class == selected_test$gpa_desirable)
-print(paste("Logistic regression accuracy: ", accuracy))
+```{r, include=TRUE}
+df_lda <- data.frame(lda_preds$x, gpa_class=selected_test$gpa_desirable)
 
-
-#FIND DISCRIMINANT SCORE???
-
-#IMPROVE???
+df_lda |> 
+  ggplot(aes(x=LD1), color=gpa_class) +
+  geom_density() +
+  labs(title="LD1 Disciminant Score Distribution")
 ```
 
+There appears to be a multimodal peak representing each class although it is very subtle. The distribution also appears to have a slight skew right. We interpret these properties to mean that there is a noticeable distinction between classes and there are more extreme large discriminant scores. This could mean that some students are strongly predicted to have a good GPA given the predictors.
 
+We evaluate the LDA model with a confusion matrix and related metrics.
+
+### Confusion Matrix
 
 ```{r}
-# 6.2 LDA Model Evaluation
+cm_lda <- confusionMatrix(lda_class, selected_test$gpa_desirable)
 
+cm_lda_df <- as.data.frame(cm_lda$table) |> 
+  rename(Label=Reference)
+
+cm_lda_df |> 
+  ggplot(aes(x=Label, y=Prediction, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label=Freq), color="white") +
+  scale_fill_gradient(low="lightblue", high="darkblue") +
+  labs(title="LDA Confusion Matrix for Desirable GPA")
+
+```
+
+### Metrics
+
+```{r}
+# accuracy_lda <- mean(lda_class == selected_test$gpa_desirable)
+# print(paste("LDA accuracy: ", accuracy_lda))
+
+tribble(~Metric, ~Score,
+        "Accuracy", cm_lda$overall['Accuracy'],
+        "Sensitivity", cm_lda$byClass['Sensitivity'],
+        "Specificity",cm_lda$byClass['Specificity'],
+)
+```
+
+The LDA model seem pretty strong based on the confusion matrix and metrics. It seems to predict the true class very well, but is not as good at predicting true negatives. This may be due to a class imbalance. 
+
+```{r, include=FALSE}
 #LDA MODEL EVALUATION:
 error_colors <- as.factor(selected_test$gpa_desirable == lda_class)
 
@@ -614,13 +675,9 @@ predicted_probs <- lda_preds$posterior
 colnames(predicted_probs) <- levels(selected_test$gpa_desirable)
 ```
 
-## 5.3 Logistic Model Creation
+## 5.3 Logistic Model 
 
 ```{r, include=FALSE}
-# 6.3 Logistic Model Creation
-
-#LOGISTIC REGRESSION
-
 log_reg_model <- multinom(gpa_desirable ~ ., data = selected_train |> select(-c("gpa","gpa_letter")))
  
 #log_reg_pred_probs <- predict(log_reg_model, newdata = test_cls, type = "probs")
@@ -632,13 +689,37 @@ log_reg_accuracy <- mean(log_reg_pred_class == selected_test$gpa_desirable)
 
 ```
 
-## 5.4 Logistic Model Evaluation
+### Confusion Matrix
+
+```{r}
+cm_lr <- confusionMatrix(log_reg_pred_class, selected_test$gpa_desirable)
+
+cm_lr_df <- as.data.frame(cm_lr$table) |> 
+  rename(Label=Reference)
+
+cm_lr_df |> 
+  ggplot(aes(x=Label, y=Prediction, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label=Freq), color="white") +
+  scale_fill_gradient(low="lightblue", high="darkblue") +
+  labs(title="Logistic Regression Confusion Matrix for Desirable GPA")
+```
+
+### Metrics
+
+```{r}
+tribble(~Metric, ~Score,
+        "Accuracy", cm_lr$overall['Accuracy'],
+        "Sensitivity", cm_lr$byClass['Sensitivity'],
+        "Specificity",cm_lr$byClass['Specificity'],
+)
+```
+
+The logistic regression model appears slightly superior to the LDA model at predicting the negative class, but results are fairly similar overall. 
 
 ### Plotting Logistic Regression Model Evaluation
 
-```{r}
-# 6.4 Logistic Model Evaluation
-
+```{r, include=FALSE}
  #LOGISTIC MODEL EVALUATION:
 error_colors <- as.factor(log_reg_pred_class == selected_test$gpa_desirable)
 plot(pc_test$x, col = error_colors, pch=20, cex=2)
@@ -647,73 +728,51 @@ legend("topright", legend = levels(error_colors),
        pch = 20, title = "Reasonable Prediction")
 ```
 
-### Logistic Regression Confusion Matrix
+Based on the high accuracy of the linear classifiers, a linear decision boundary can effectively differentiate between students with a good GPA and a poor GPA. This shows that the predictors are indicative of academic performance and if students are able to improve some of the attributes, they are likely to be more successful in school.     
 
-```{r}
-table(log_reg_pred_class, selected_test$gpa_desirable)
-```
+# 6: Classification Analysis and Visualization with Tree-Based Methods and SVM 
 
-### Logistic Regression Metrics
-
-```{r}
-print(log_reg_accuracy)
-```
-
-# 6: Supervised Classification - Tree-Based Methods and Support Vector Machines
+We now know that the predictors can effectively distinguish between strong and weak academic performers, but other methods may be more accurate and provide more insight into how predictions are being made.
 
 ## 6.1 Decision Tree
 
-```{r, include=FALSE}
-# 7.1 Decision Tree
+The decision tree is particularly useful for our case because it is interpretable, and we want to show what predictive variables are causing students to perform well in school. 
 
+```{r, include=FALSE}
 train_input <- selected_train |> select(-gpa, -gpa_letter) 
-decision_tree <- rpart(gpa_desirable ~ ., train_input)
+decision_tree <- rpart(gpa_desirable ~ ., data=train_input, parms = list( split = "information"))
 
 summary(decision_tree)
 ```
 
-### Decision Tree Plot
-
 ```{r}
-rpart.plot(decision_tree)
+rpart.plot(decision_tree, main="Tree for Classifying Strong Academic Performance")
 ```
 
-```{r, include=FALSE}
-# 7.2 Random Forest Creation
-
-random_forest_model <- randomForest(gpa_desirable~., train_input, ntree=500, importance=TRUE)
-summary(random_forest_model)
-```
+The decison tree with splits based on information gain heavily favours academic scores for determining student performance. Among them, it considers math the most significant split with the highest information gain. Many areas of science rely on a strong math background, which could explain why math score is the first split.
 
 ## 6.2 Random Forest
 
-### Confusion Matrix
-
-```{r}
-# 7.3 Random Forest Evaluation
-
-random_forest_model$confusion
-```
-
-### Variable Importance Plot
-
-```{r}
-varImpPlot(random_forest_model)
-```
-
-## 6.3 Comparing SVM Models
+We follow up the decision tree by training a random forest. Since we are attempting to extract inference rather than maximize predictive accuracy, we do not show evaluation metrics on test data. Instead, we plot variable importance to show which predictive variables strongly considered by the random forest model.
 
 ```{r, include=FALSE}
-# 8.1 Comparing SVM Models
+random_forest_model <- randomForest(gpa_desirable~., train_input, ntree=500, importance=TRUE)
+```
 
+```{r}
+varImpPlot(random_forest_model, main="Random Forest Variable Importance")
+```
 
-# #SVM
+The variable importance plot strengthens the hypothesis that decision trees and random forest heavily favour the academic predictor variables.
 
-# 
+## 6.3 SVM Kernel Analysis 
+
+We apply the kernel trick to train several support vector machines in order to analyze the ideal shape of the decision boundary. 
+
+```{r, include=FALSE}
 try = seq(1,1 #10
           ,by=1)
 
-# 
 # #ATTEMPTING TO DETERMINE THE RELATIONSHIP OF DATA (IE LINEAR,QUADRATIC,RADIAL)
 # 
 # #from PC, we expect Linear Model To Work Well
@@ -742,15 +801,15 @@ best <- tune(svm, gpa_desirable ~ ., data = train, ranges = list(cost = try),ker
 ```
 
 ```{r}
-tribble(~"LINEAR MIS", ~"RADIAL MIS", ~"QUAD MIS",
-         lin_mis, rad_mis, quad_mis)
+tribble(~"Kernel.Type", ~"Misclassification",
+        "Linear", lin_mis,
+        "Radial", rad_mis,
+        "Quadratic", quad_mis)
 ```
 
-## 6.4 SVM Visualization
+The support vector machine with the radial kernel performs the best, followed closely by the linear kernel and distantly by the quadratic kernel. Since both linear and radial kernels perform well, two seemingly contradictory results emerge. The linear decision boundary suggests a simpler relationship between predictor variables to classify academic performers, while the strong performance of the SVM with the radial kernel suggests a more complex one. In the context of academic performance, this may mean that societal and academic predictive factors can be used in a straightforward manner to distinguish strong academic performers, but there are complex relationships between variables that are better separated with a complex decision boundary.     
 
-```{r}
-# 8.2 Display
-
+```{r, include=FALSE}
  error_colors <- as.factor(!lin_preds)
  plot(pc_test$x, col = error_colors, pch=20, cex=2)
  legend("topright", legend = levels(error_colors), 
@@ -758,25 +817,12 @@ tribble(~"LINEAR MIS", ~"RADIAL MIS", ~"QUAD MIS",
         pch = 20, title = "Reasonable Prediction")
 ```
 
-# 7 - Deep Learning
+## 6.4 Deep Learning for Analyzing Specific GPA Scores
+
+From analyzing different classification methods and kernels, we determined that complex relationships exist between predictors of academic success. We also previously identified that strong academic performers can be accurately identified, but specificity tends to be far worse than sensitivity. This leads us to think that certain GPA scores are being misclassified consistently, while others are being classified well. We attempt to verify the claim by creating a deep learning model with softmax activation for multiclass classification output. 
+
 
 ```{r, include=FALSE}
-# 9.1 Loading Keras into the Workspace
-
-#I MOVED THIS BACK UP
-```
-
-## 7.1 Neural Network for GPA Letter
-```{r, include=FALSE}
-# 9.2 Creating the Network
-
-
-
-#CLASSIFY: GPA_DESIRABLE INSTEAD OF GPA_LETTER???????
-
-
-# dim(selected_train)
-
 X_nn_train <- as.matrix(selected_train |> select(-c("gpa_letter", gpa_desirable, gpa)))
 Y_nn_train <- as.matrix(model.matrix(~gpa_letter -1, data=selected_train))
 
@@ -801,14 +847,7 @@ nn_keras |>
   )
 ```
 
-## 7.2 Evaluating the Neural Network for GPA Letter
-
-```{r}
-# 9.3 Evaluating the Network
-
-
-#CLASSIFY: GPA_DESIRABLE INSTEAD OF GPA_LETTER???????
-
+```{r, include=FALSE}
 X_nn_test <- as.matrix(selected_test |> select(-c("gpa_letter", gpa_desirable, gpa)))
 Y_nn_test <- as.matrix(model.matrix(~gpa_letter -1, data=selected_test))
 # summary(nn_keras)
@@ -821,23 +860,22 @@ acc_nn_keras <- mean(pred_nn_keras == Y_nn_test_label)
 data.frame(Accuracy=acc_nn_keras)
 ```
 
-## 7.3 Neural Network for Desirable GPA
-
 ```{r}
-y_nn_binary <- ifelse(selected_train$gpa_desirable == "good_gpa", 1, 0)
-test_binary <- selected_test |> 
-  select(-c(gpa, gpa_letter)) |> 
-  transform(gpa_desirable = ifelse(gpa_desirable=="good_gpa", 1, 0))
+letter_grades <- c("A", "B", "C", "D", "F")
 
-nnet_binary <- nnet(x=X_nn_train, y=y_nn_binary, data=train_nn_binary, skip=FALSE, size=20, entropy=TRUE, trace=FALSE, decay=0.01)
-
-pred_nnet_binary <- nnet_binary |> predict(test_binary, type="class")
-print(paste("Accuracy:", mean(pred_nnet_binary== test_binary$gpa_desirable)))
-      
-# Perform cross-validation to determine hyperparameters
+for(letter in letter_grades){
+  letter_label = paste("gpa_letter", letter, sep="")
+  
+  acc <- sum(pred_nn_keras == letter_label & Y_nn_test_label == letter_label)/sum(Y_nn_test_label == letter_label)
+  
+  acc <- round(acc *100, 2)
+  
+  print(paste(letter, " accuracy: ", acc, "%"))
+}
 
 ```
 
+It appears that the neural networks classifies decent grades (B) very well. The model predicts weak albeit passing grades fairly accurately, but performs much more poorly classifying very good or failing grades. We think this is largely a consequence of the predictors; they are able to identify students with performance at the extremes, either negative or positive. This suggests that students with an A or F GPA distinguish themselves from peers in the same circumstances as themselves. Their individuality sets them on a unique path to achieve either great academic success of failure.
 
 # 8 - Conclusions and Future Research
 
